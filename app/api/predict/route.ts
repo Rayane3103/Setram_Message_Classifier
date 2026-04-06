@@ -8,7 +8,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Texte manquant" }, { status: 400 });
     }
 
-    const apiUrl = process.env.PREDICTION_API_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_PREDICTION_API_URL;
     if (!apiUrl) {
       return NextResponse.json(
         { error: "URL de l'API de prédiction non configurée" },
@@ -25,9 +25,10 @@ export async function POST(req: Request) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorText = await response.text();
+      console.error("Server Error:", errorText);
       return NextResponse.json(
-        { error: `Erreur API externe: ${response.statusText}`, detail: errorData },
+        { error: `Erreur API externe: ${response.statusText}`, detail: errorText },
         { status: response.status }
       );
     }
