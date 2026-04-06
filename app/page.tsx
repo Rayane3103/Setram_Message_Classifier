@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import Tesseract from 'tesseract.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
   Send,
   Upload,
@@ -36,33 +37,32 @@ export default function Dashboard() {
 
     setIsAnalyzing(true);
     try {
-      const response = await fetch('/api/predict', {
+      const apiUrl = process.env.NEXT_PUBLIC_PREDICTION_API_URL;
+      if (!apiUrl) throw new Error("URL de l'API de prédiction non configurée");
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText }),
       });
 
       const rawText = await response.text();
-      console.log("Raw API response:", response.status, rawText);
+      console.log("Raw Prediction response:", response.status, rawText);
 
       if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}: ${rawText}`);
+        throw new Error(`API responded with ${response.status}: ${rawText}`);
       }
 
       if (!rawText) {
-        throw new Error("Server returned an empty response");
+        throw new Error("API returned an empty response");
       }
 
       const data = JSON.parse(rawText);
-      if (data.error) {
-        alert(data.error);
-      } else {
-        setResults({
-          category: data.category,
-          subCategory: data.subCategory,
-          type: data.type
-        });
-      }
+      setResults({
+        category: data["catégorie"] || "Inconnu",
+        subCategory: data["sous_catégorie"] || "Inconnu",
+        type: data["type"] || "Inconnu",
+      });
     } catch (error) {
       console.error("Analysis error:", error);
       alert("Une erreur est survenue lors de l'analyse.");
@@ -136,30 +136,33 @@ export default function Dashboard() {
 
     setIsReformulating(true);
     try {
-      const response = await fetch('/api/reformulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: inputText }),
-      });
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) throw new Error("Clé API Gemini non configurée");
 
-      const rawText = await response.text();
-      console.log("Raw Reformulate response:", response.status, rawText);
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-      if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}: ${rawText}`);
-      }
+      const prompt = `
+        Tu es un assistant de service client pour la SETRAM (Société d'Exploitation des Tramways). 
+        Ta tâche est de reformuler le message suivant d'un client. 
+        
+        RÈGLES DE REFORMULATION :
+        1. Commence obligatoirement par "Le client a dit...", "Le client a déclaré..." ou "Le client a réclamé..." selon le contexte du message.
+        2. Utilise un ton narratif et descriptif.
+        3. Développe un scénario clair basé sur le message si nécessaire pour le rendre plus complet.
+        4. Garde l'aspect professionnel tout en restant fidèle aux faits.
+        5. Ne réponds pas au client, décris simplement ce qu'il rapporte.
 
-      if (!rawText) {
-        throw new Error("Server returned an empty response");
-      }
+        MESSAGE DU CLIENT :
+        "${inputText}"
+      `;
 
-      const data = JSON.parse(rawText);
-      if (data.error) {
-        alert(data.error);
-      } else {
-        setReformulatedText(data.reformulatedText);
-        setShowReformulateModal(true);
-      }
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text().trim();
+
+      setReformulatedText(text);
+      setShowReformulateModal(true);
     } catch (error) {
       console.error("Reformulation error:", error);
       alert("Une erreur est survenue lors de la reformulation.");
