@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     }
 
     const data = await response.json();
-    
+
     // Map French fields to English camelCase for frontend consistency
     const result = {
       category: data["catégorie"] || "Inconnu",
