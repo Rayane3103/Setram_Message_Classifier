@@ -42,6 +42,12 @@ export default function Dashboard() {
         body: JSON.stringify({ text: inputText }),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Server Error:", errorText);
+        throw new Error(`Server responded with ${response.status}`);
+      }
+
       const data = await response.json();
       if (data.error) {
         alert(data.error);
@@ -130,6 +136,12 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText }),
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Server Error:", errorText);
+        throw new Error(`Server responded with ${response.status}`);
+      }
 
       const data = await response.json();
       if (data.error) {
