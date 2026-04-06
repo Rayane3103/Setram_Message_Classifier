@@ -42,13 +42,18 @@ export default function Dashboard() {
         body: JSON.stringify({ text: inputText }),
       });
 
+      const rawText = await response.text();
+      console.log("Raw API response:", response.status, rawText);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Server Error:", errorText);
-        throw new Error(`Server responded with ${response.status}`);
+        throw new Error(`Server responded with ${response.status}: ${rawText}`);
       }
 
-      const data = await response.json();
+      if (!rawText) {
+        throw new Error("Server returned an empty response");
+      }
+
+      const data = JSON.parse(rawText);
       if (data.error) {
         alert(data.error);
       } else {
@@ -137,13 +142,18 @@ export default function Dashboard() {
         body: JSON.stringify({ text: inputText }),
       });
 
+      const rawText = await response.text();
+      console.log("Raw Reformulate response:", response.status, rawText);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Server Error:", errorText);
-        throw new Error(`Server responded with ${response.status}`);
+        throw new Error(`Server responded with ${response.status}: ${rawText}`);
       }
 
-      const data = await response.json();
+      if (!rawText) {
+        throw new Error("Server returned an empty response");
+      }
+
+      const data = JSON.parse(rawText);
       if (data.error) {
         alert(data.error);
       } else {
