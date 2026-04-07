@@ -22,6 +22,23 @@ import {
   X
 } from 'lucide-react';
 
+const fileToGenerativePart = async (file: File) => {
+  const base64EncodedDataPromise = new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.readAsDataURL(file);
+  });
+  return {
+    inlineData: {
+      data: await base64EncodedDataPromise,
+      mimeType: file.type
+    },
+  };
+};
+
+// Variable globale pour alterner et faire du fallback entre les modèles
+let currentReformulateModel = "gemini-2.5-flash";
+
 export default function Dashboard() {
   const [inputText, setInputText] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -119,13 +136,26 @@ export default function Dashboard() {
 
     setIsOCRLoading(true);
     try {
-      const result = await Tesseract.recognize(file, 'fra+eng', {
-        logger: m => console.log(m)
-      });
-      setInputText(result.data.text);
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) throw new Error("Clé API Gemini non configurée");
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-3.0-flash" });
+
+      const imagePart = await fileToGenerativePart(file);
+      const prompt = "Extrais tout le texte de cette image de manière précise. Si c'est manuscrit, lis-le attentivement. Le texte peut être en français, anglais ou arabe. Renvoie uniquement le texte extrait tel quel, sans commentaires ni traduction.";
+
+      const result = await model.generateContent([prompt, imagePart]);
+      const response = await result.response;
+      let text = response.text().trim();
+      
+      // Nettoyer les guillemets si Gemini en a ajouté
+      text = text.replace(/^"|"$/g, '').trim();
+
+      setInputText(text);
     } catch (error) {
-      console.error("OCR Error:", error);
-      alert("Erreur lors de l'extraction du texte. Veuillez réessayer.");
+      console.error("OCR (Gemini) Error:", error);
+      alert("Erreur lors de l'extraction du texte. Veuillez vérifier votre clé API ou réessayer.");
     } finally {
       setIsOCRLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -141,8 +171,6 @@ export default function Dashboard() {
       if (!apiKey) throw new Error("Clé API Gemini non configurée");
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
       const prompt = `
         Tu es un assistant de service client pour la SETRAM (Société d'Exploitation des Tramways). 
         Ta tâche est de reformuler le message suivant d'un client de manière concise.
@@ -158,15 +186,37 @@ export default function Dashboard() {
         "${inputText}"
       `;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
+      const attemptGeneration = async (modelName: string) => {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        return await result.response;
+      };
+
+      let response;
+      try {
+        response = await attemptGeneration(currentReformulateModel);
+        // Si ça a marché, on bascule de modèle pour le prochain coup (Round Robin)
+        currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
+      } catch (err: any) {
+        // En cas d'erreur de quota (429), on bascule immédiatement et on réessaie avec l'autre
+        if (err.message && err.message.includes('429')) {
+          console.warn(`[Quota Exceeded] Le modèle ${currentReformulateModel} a atteint sa limite. Basculement sur l'autre modèle...`);
+          currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
+          response = await attemptGeneration(currentReformulateModel);
+          // Si le backup réussit, on anticipe la prochaine bascule
+          currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
+        } else {
+          throw err;
+        }
+      }
+
       const text = response.text().trim();
 
       setReformulatedText(text);
       setShowReformulateModal(true);
     } catch (error) {
       console.error("Reformulation error:", error);
-      alert("Une erreur est survenue lors de la reformulation.");
+      alert("Une erreur est survenue lors de la reformulation. Vos limites sont peut-être totalement épuisées pour les deux modèles.");
     } finally {
       setIsReformulating(false);
     }
