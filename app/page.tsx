@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
+import Image from 'next/image';
 import Tesseract from 'tesseract.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
@@ -207,10 +208,16 @@ export default function Dashboard() {
       {/* Navigation */}
       <nav className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-brand-navy rounded-md flex items-center justify-center text-white font-bold text-xl">
-            S
-          </div>
-          <h1 className="text-xl font-bold text-brand-navy tracking-tight">Classification IA</h1>
+          <Image
+            src="/setram_logo.png"
+            alt="SETRAM Logo"
+            width={120}
+            height={40}
+            className="object-contain"
+            priority
+          />
+          <div className="h-6 w-px bg-gray-200"></div>
+          <h1 className="text-xl font-bold text-brand-navy tracking-tight">Setram Classificateur de Doléances</h1>
         </div>
 
         <button className="bg-brand-cyan hover:bg-cyan-500 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200 shadow-sm flex items-center gap-2">
@@ -403,13 +410,23 @@ export default function Dashboard() {
 
       <footer className="max-w-6xl mx-auto p-8 pt-12 border-t border-gray-100 mt-12 mb-8">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-3 opacity-60 grayscale hover:grayscale-0 transition-all">
-            <div className="w-8 h-8 bg-brand-navy rounded flex items-center justify-center text-white text-xs font-bold">S</div>
-            <span className="text-sm font-bold text-brand-navy">SETRAM.DZ</span>
+          <div className="flex items-center gap-3 opacity-60 hover:opacity-100 transition-all">
+            <Image
+              src="/setram_logo.png"
+              alt="SETRAM Logo"
+              width={100}
+              height={32}
+              className="object-contain"
+            />
           </div>
-          <p className="text-xs text-gray-400 font-medium tracking-wide">
-            &copy; 2026 SETRAM AI. TOUS DROITS RÉSERVÉS.
-          </p>
+          <div className="text-center space-y-1">
+            <p className="text-xs text-gray-400 font-medium tracking-wide">
+              &copy; 2026 SETRAM AI. TOUS DROITS RÉSERVÉS.
+            </p>
+            <p className="text-xs text-gray-400">
+              Développé par <span className="font-semibold text-brand-navy">Rayane Moumine</span> &amp; <span className="font-semibold text-brand-navy">Taha Ghermaoui</span>
+            </p>
+          </div>
           <div className="flex gap-6">
             <a href="#" className="text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">POLITIQUE</a>
             <a href="#" className="text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">AIDE</a>
