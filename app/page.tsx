@@ -206,30 +206,30 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
       {/* Navigation */}
-      <nav className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-4">
+      <nav className="bg-white border-b border-gray-100 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <Image
             src="/setram_logo.png"
             alt="SETRAM Logo"
             width={120}
             height={40}
-            className="object-contain"
+            className="object-contain w-[80px] sm:w-[120px] shrink-0"
             priority
           />
-          <div className="h-6 w-px bg-gray-200"></div>
-          <h1 className="text-xl font-bold text-brand-navy tracking-tight">Setram Classificateur de Doléances</h1>
+          <div className="h-6 w-px bg-gray-200 hidden sm:block"></div>
+          <h1 className="text-sm sm:text-xl font-bold text-brand-navy tracking-tight truncate">Classificateur de Doléances</h1>
         </div>
 
-        <button className="bg-brand-cyan hover:bg-cyan-500 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200 shadow-sm flex items-center gap-2">
+        <button className="bg-brand-cyan hover:bg-cyan-500 text-white px-3 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 shadow-sm items-center gap-2 hidden sm:flex">
           Transmettre une doléance
         </button>
       </nav>
 
-      <main className="max-w-6xl mx-auto p-8 space-y-8">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-5 sm:space-y-8">
         {/* Header Section */}
         <div className="space-y-2">
-          <h2 className="text-3xl font-extrabold text-brand-navy">Dashboard d'Analyse</h2>
-          <p className="text-gray-500 max-w-2xl">
+          <h2 className="text-xl sm:text-3xl font-extrabold text-brand-navy">Dashboard d'Analyse</h2>
+          <p className="text-sm sm:text-base text-gray-500 max-w-2xl">
             Utilisez notre intelligence artificielle pour classifier automatiquement vos requêtes et documents selon les normes SETRAM.
           </p>
         </div>
@@ -237,7 +237,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* AI Input Section */}
           <section className="lg:col-span-12">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-6">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 space-y-4 sm:space-y-6">
               <div className="flex items-center gap-3 pb-2 border-b border-gray-50">
                 <Activity size={20} className="text-brand-navy" />
                 <h3 className="font-bold text-brand-navy text-lg">Nouvelle Analyse</h3>
@@ -248,11 +248,11 @@ export default function Dashboard() {
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Décrivez votre requête ou le contenu du document ici..."
-                  className="w-full min-h-[160px] p-4 bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-brand-cyan focus:border-transparent outline-none transition-all resize-none text-gray-700"
+                  className="w-full min-h-[120px] sm:min-h-[160px] p-3 sm:p-4 bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-brand-cyan focus:border-transparent outline-none transition-all resize-none text-sm sm:text-base text-gray-700"
                 />
 
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -264,7 +264,7 @@ export default function Dashboard() {
                       onClick={triggerUpload}
                       disabled={isOCRLoading}
                       className={`
-                        flex items-center gap-2 font-semibold transition-all px-4 py-2 rounded-lg group
+                        flex items-center gap-2 font-semibold transition-all px-3 sm:px-4 py-2 rounded-lg group text-sm
                         ${isOCRLoading
                           ? 'bg-gray-100 text-gray-400 cursor-wait'
                           : 'bg-cyan-50 text-brand-cyan hover:bg-cyan-100'}
@@ -273,42 +273,42 @@ export default function Dashboard() {
                       {isOCRLoading ? (
                         <div className="w-4 h-4 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin"></div>
                       ) : (
-                        <Upload size={18} />
+                        <Upload size={16} />
                       )}
-                      <span>{isOCRLoading ? "Extraction..." : "Upload Image"}</span>
-                      {!isOCRLoading && <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                      <span className="hidden xs:inline">{isOCRLoading ? "Extraction..." : "Upload"}</span>
+                      {!isOCRLoading && <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform hidden sm:block" />}
                     </button>
 
                     <button
                       onClick={toggleListening}
                       className={`
-                        flex items-center gap-2 font-semibold transition-all px-4 py-2 rounded-lg
+                        flex items-center gap-2 font-semibold transition-all px-3 sm:px-4 py-2 rounded-lg text-sm
                         ${isListening
                           ? 'bg-red-50 text-red-500 ring-2 ring-red-100 animate-[pulse-mic_2s_infinite]'
                           : 'bg-brand-cyan/10 text-brand-cyan hover:bg-brand-cyan/20'}
                       `}
                     >
-                      {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-                      <span>{isListening ? "Écoute..." : "Vocal / Mic"}</span>
+                      {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                      <span className="hidden xs:inline">{isListening ? "Écoute..." : "Vocal"}</span>
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     <button
                       onClick={handleReformulate}
                       disabled={isReformulating || !inputText.trim()}
                       className={`
-                        relative overflow-hidden px-6 py-3 rounded-lg font-bold text-white transition-all duration-300
+                        relative overflow-hidden px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-bold text-white transition-all duration-300 text-sm sm:text-base
                         ${isReformulating
                           ? 'bg-brand-cyan/50 cursor-wait'
                           : 'bg-gradient-to-r from-brand-cyan to-brand-navy hover:shadow-lg active:scale-95 disabled:opacity-50'}
                       `}
                     >
-                      <span className="relative z-10 flex items-center gap-2">
+                      <span className="relative z-10 flex items-center justify-center gap-2">
                         {isReformulating ? (
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         ) : (
-                          <Sparkles size={18} />
+                          <Sparkles size={16} />
                         )}
                         {isReformulating ? "Reformulation..." : "Reformuler avec IA"}
                       </span>
@@ -318,16 +318,16 @@ export default function Dashboard() {
                       onClick={handleAnalyse}
                       disabled={isAnalyzing || !inputText.trim()}
                       className={`
-                        relative overflow-hidden px-8 py-3 rounded-lg font-bold text-white transition-all duration-300
+                        relative overflow-hidden px-5 sm:px-8 py-2.5 sm:py-3 rounded-lg font-bold text-white transition-all duration-300 text-sm sm:text-base
                         ${isAnalyzing ? 'bg-brand-navy/80 cursor-wait' : 'bg-brand-navy hover:bg-navy-900 active:scale-95 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed'}
                       `}
                     >
                       {isAnalyzing && (
                         <div className="absolute inset-0 bg-brand-navy animate-[pulse-custom_1.5s_infinite] opacity-50"></div>
                       )}
-                      <span className="relative z-10 flex items-center gap-2">
+                      <span className="relative z-10 flex items-center justify-center gap-2">
                         {isAnalyzing ? "Analyse en cours..." : "Lancer l'analyse"}
-                        {!isAnalyzing && <Send size={18} />}
+                        {!isAnalyzing && <Send size={16} />}
                       </span>
                     </button>
                   </div>
@@ -338,9 +338,9 @@ export default function Dashboard() {
 
           {/* Results Section */}
           <section className="lg:col-span-12 space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="font-bold text-brand-navy text-lg uppercase tracking-wider flex items-center gap-2">
-                <div className="w-2 h-6 bg-brand-cyan rounded-full"></div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-2 gap-3">
+              <h3 className="font-bold text-brand-navy text-sm sm:text-lg uppercase tracking-wider flex items-center gap-2">
+                <div className="w-2 h-5 sm:h-6 bg-brand-cyan rounded-full"></div>
                 Résultats de Classification
               </h3>
               <div className="flex items-center gap-3">
@@ -348,12 +348,12 @@ export default function Dashboard() {
                   <>
                     <button
                       onClick={handleExportJSON}
-                      className="flex items-center gap-2 text-brand-navy font-bold text-xs bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg transition-all border border-gray-200"
+                      className="flex items-center gap-2 text-brand-navy font-bold text-xs bg-gray-100 hover:bg-gray-200 px-3 sm:px-4 py-2 rounded-lg transition-all border border-gray-200"
                     >
                       <Download size={14} />
-                      EXPORTER (JSON)
+                      <span className="hidden sm:inline">EXPORTER</span> (JSON)
                     </button>
-                    <span className="text-xs font-medium text-gray-400">ANALYSE TERMINÉE</span>
+                    <span className="text-xs font-medium text-gray-400 hidden sm:inline">ANALYSE TERMINÉE</span>
                   </>
                 )}
               </div>
@@ -363,41 +363,44 @@ export default function Dashboard() {
               {/* Step indicator line */}
               <div className="hidden md:block absolute top-[60px] left-[15%] right-[15%] h-[2px] bg-brand-navy/10 z-0"></div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 relative z-10">
                 {/* Card 1: Catégorie */}
-                <div className="bg-white border border-gray-100 rounded-xl p-8 shadow-sm text-center space-y-4 group hover:border-brand-cyan/30 transition-all duration-300">
-                  <div className="mx-auto w-16 h-16 rounded-full bg-white border-2 border-brand-navy flex items-center justify-center text-brand-navy group-hover:bg-brand-navy group-hover:text-white transition-colors duration-300 shadow-sm relative z-10">
-                    <FileText size={28} strokeWidth={1.5} />
+                <div className="bg-white border border-gray-100 rounded-xl p-5 sm:p-8 shadow-sm text-center space-y-3 sm:space-y-4 group hover:border-brand-cyan/30 transition-all duration-300">
+                  <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white border-2 border-brand-navy flex items-center justify-center text-brand-navy group-hover:bg-brand-navy group-hover:text-white transition-colors duration-300 shadow-sm relative z-10">
+                    <FileText size={22} className="sm:hidden" strokeWidth={1.5} />
+                    <FileText size={28} className="hidden sm:block" strokeWidth={1.5} />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Catégorie</p>
-                    <p className={`text-2xl font-black text-brand-navy min-h-[2rem] transition-opacity duration-500 ${results ? 'opacity-100' : 'opacity-20'}`}>
+                    <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Catégorie</p>
+                    <p className={`text-lg sm:text-2xl font-black text-brand-navy min-h-[1.5rem] sm:min-h-[2rem] transition-opacity duration-500 ${results ? 'opacity-100' : 'opacity-20'}`}>
                       {results?.category || "---"}
                     </p>
                   </div>
                 </div>
 
                 {/* Card 2: Sous-Catégorie */}
-                <div className="bg-white border border-gray-100 rounded-xl p-8 shadow-sm text-center space-y-4 group hover:border-brand-cyan/30 transition-all duration-300">
-                  <div className="mx-auto w-16 h-16 rounded-full bg-white border-2 border-brand-navy flex items-center justify-center text-brand-navy group-hover:bg-brand-navy group-hover:text-white transition-colors duration-300 shadow-sm relative z-10">
-                    <Layers size={28} strokeWidth={1.5} />
+                <div className="bg-white border border-gray-100 rounded-xl p-5 sm:p-8 shadow-sm text-center space-y-3 sm:space-y-4 group hover:border-brand-cyan/30 transition-all duration-300">
+                  <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white border-2 border-brand-navy flex items-center justify-center text-brand-navy group-hover:bg-brand-navy group-hover:text-white transition-colors duration-300 shadow-sm relative z-10">
+                    <Layers size={22} className="sm:hidden" strokeWidth={1.5} />
+                    <Layers size={28} className="hidden sm:block" strokeWidth={1.5} />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sous-Catégorie</p>
-                    <p className={`text-2xl font-black text-brand-navy min-h-[2rem] transition-opacity duration-500 ${results ? 'opacity-100' : 'opacity-20'}`}>
+                    <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Sous-Catégorie</p>
+                    <p className={`text-lg sm:text-2xl font-black text-brand-navy min-h-[1.5rem] sm:min-h-[2rem] transition-opacity duration-500 ${results ? 'opacity-100' : 'opacity-20'}`}>
                       {results?.subCategory || "---"}
                     </p>
                   </div>
                 </div>
 
                 {/* Card 3: Type */}
-                <div className="bg-white border border-gray-100 rounded-xl p-8 shadow-sm text-center space-y-4 group hover:border-brand-cyan/30 transition-all duration-300">
-                  <div className="mx-auto w-16 h-16 rounded-full bg-white border-2 border-brand-navy flex items-center justify-center text-brand-navy group-hover:bg-brand-navy group-hover:text-white transition-colors duration-300 shadow-sm relative z-10">
-                    <Tag size={28} strokeWidth={1.5} />
+                <div className="bg-white border border-gray-100 rounded-xl p-5 sm:p-8 shadow-sm text-center space-y-3 sm:space-y-4 group hover:border-brand-cyan/30 transition-all duration-300">
+                  <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white border-2 border-brand-navy flex items-center justify-center text-brand-navy group-hover:bg-brand-navy group-hover:text-white transition-colors duration-300 shadow-sm relative z-10">
+                    <Tag size={22} className="sm:hidden" strokeWidth={1.5} />
+                    <Tag size={28} className="hidden sm:block" strokeWidth={1.5} />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Type</p>
-                    <p className={`text-2xl font-black text-brand-navy min-h-[2rem] transition-opacity duration-500 ${results ? 'opacity-100' : 'opacity-20'}`}>
+                    <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Type</p>
+                    <p className={`text-lg sm:text-2xl font-black text-brand-navy min-h-[1.5rem] sm:min-h-[2rem] transition-opacity duration-500 ${results ? 'opacity-100' : 'opacity-20'}`}>
                       {results?.type || "---"}
                     </p>
                   </div>
@@ -408,38 +411,38 @@ export default function Dashboard() {
         </div>
       </main>
 
-      <footer className="max-w-6xl mx-auto p-8 pt-12 border-t border-gray-100 mt-12 mb-8">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+      <footer className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 pt-8 sm:pt-12 border-t border-gray-100 mt-8 sm:mt-12 mb-4 sm:mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-6">
           <div className="flex items-center gap-3 opacity-60 hover:opacity-100 transition-all">
             <Image
               src="/setram_logo.png"
               alt="SETRAM Logo"
               width={100}
               height={32}
-              className="object-contain"
+              className="object-contain w-[80px] sm:w-[100px]"
             />
           </div>
           <div className="text-center space-y-1">
-            <p className="text-xs text-gray-400 font-medium tracking-wide">
+            <p className="text-[10px] sm:text-xs text-gray-400 font-medium tracking-wide">
               &copy; 2026 SETRAM AI. TOUS DROITS RÉSERVÉS.
             </p>
-            <p className="text-xs text-gray-400">
+            <p className="text-[10px] sm:text-xs text-gray-400">
               Développé par <span className="font-semibold text-brand-navy">Rayane Moumine</span> &amp; <span className="font-semibold text-brand-navy">Taha Ghermaoui</span>
             </p>
           </div>
-          <div className="flex gap-6">
-            <a href="#" className="text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">POLITIQUE</a>
-            <a href="#" className="text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">AIDE</a>
-            <a href="#" className="text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">CONNEXION</a>
+          <div className="flex gap-4 sm:gap-6">
+            <a href="#" className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">POLITIQUE</a>
+            <a href="#" className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">AIDE</a>
+            <a href="#" className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-brand-cyan transition-colors">CONNEXION</a>
           </div>
         </div>
       </footer>
 
       {/* Reformulation Confirmation Modal */}
       {showReformulateModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-navy/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-2xl w-full overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className="p-6 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-brand-navy/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-100 max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
+            <div className="p-4 sm:p-6 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-brand-cyan/10 rounded-full flex items-center justify-center text-brand-cyan">
                   <Sparkles size={20} />
@@ -457,7 +460,7 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Texte Original</p>
                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm italic text-gray-500 min-h-[150px] max-h-[250px] overflow-y-auto">
@@ -475,10 +478,10 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="p-6 bg-gray-50/50 flex items-center justify-end gap-4 border-t border-gray-50">
+            <div className="p-4 sm:p-6 bg-gray-50/50 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 sm:gap-4 border-t border-gray-50">
               <button
                 onClick={() => setShowReformulateModal(false)}
-                className="px-6 py-2.5 rounded-lg font-bold text-gray-500 hover:bg-gray-100 transition-all text-sm"
+                className="px-6 py-2.5 rounded-lg font-bold text-gray-500 hover:bg-gray-100 transition-all text-sm text-center"
               >
                 Annuler
               </button>
@@ -487,7 +490,7 @@ export default function Dashboard() {
                   setInputText(reformulatedText);
                   setShowReformulateModal(false);
                 }}
-                className="bg-brand-navy hover:bg-navy-900 text-white px-8 py-2.5 rounded-lg font-bold shadow-md hover:shadow-lg active:scale-95 transition-all text-sm flex items-center gap-2"
+                className="bg-brand-navy hover:bg-navy-900 text-white px-8 py-2.5 rounded-lg font-bold shadow-md hover:shadow-lg active:scale-95 transition-all text-sm flex items-center justify-center gap-2"
               >
                 <Check size={18} />
                 Confirmer & Remplacer
