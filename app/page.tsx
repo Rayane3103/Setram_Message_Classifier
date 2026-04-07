@@ -145,14 +145,14 @@ export default function Dashboard() {
 
       const prompt = `
         Tu es un assistant de service client pour la SETRAM (Société d'Exploitation des Tramways). 
-        Ta tâche est de reformuler le message suivant d'un client. 
+        Ta tâche est de reformuler le message suivant d'un client de manière concise.
         
         RÈGLES DE REFORMULATION :
         1. Commence obligatoirement par "Le client a dit...", "Le client a déclaré..." ou "Le client a réclamé..." selon le contexte du message.
-        2. Utilise un ton narratif et descriptif.
-        3. Développe un scénario clair basé sur le message si nécessaire pour le rendre plus complet.
-        4. Garde l'aspect professionnel tout en restant fidèle aux faits.
-        5. Ne réponds pas au client, décris simplement ce qu'il rapporte.
+        2. Utilise un français simple, clair et compréhensible.
+        3. Donne uniquement le nécessaire, sans exagérer ni ajouter d'informations non présentes dans le message original.
+        4. Garde un ton professionnel et neutre en restant strictement fidèle aux faits.
+        5. Ne réponds pas au client, décris simplement et brièvement ce qu'il rapporte.
 
         MESSAGE DU CLIENT :
         "${inputText}"
