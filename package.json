@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "rag:prepare": "node scripts/prepare-pinecone-rag.mjs",
+    "rag:upload": "node scripts/upload-pinecone-rag.mjs",
+    "rag:upload:dry-run": "node scripts/upload-pinecone-rag.mjs --dry-run"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -40,6 +40,20 @@ const parseContextDecision = (text: string): ContextDecision => {
   };
 };
 
+const parsePredictionPayload = (text: string) => {
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    throw new Error("Prediction API returned invalid JSON");
+  }
+};
+
 const buildContextGuardPrompt = (text: string) => `
 Tu es un garde de contexte strict pour un classificateur de doléances SETRAM.
 
@@ -147,7 +161,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const data = await response.json();
+    const rawPredictionText = await response.text();
+    const data = parsePredictionPayload(rawPredictionText);
+
+    if (!data) {
+      console.error("Prediction API returned an empty 200 response");
+      return NextResponse.json(
+        { error: "L'API de prediction a retourne une reponse vide" },
+        { status: 502 }
+      );
+    }
 
     const result = normalizePredictionResponse(data);
 

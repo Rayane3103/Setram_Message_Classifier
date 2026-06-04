@@ -20,6 +20,11 @@
 # production
 /build
 
+# generated RAG export files
+/data/pinecone/*.csv
+/data/pinecone/*.ndjson
+/data/pinecone/*.json
+
 # misc
 .DS_Store
 *.pem

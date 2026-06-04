@@ -23,7 +23,8 @@ import {
   Download,
   Sparkles,
   Check,
-  X
+  X,
+  Copy
 } from 'lucide-react';
 
 const fileToGenerativePart = async (file: File) => {
@@ -57,6 +58,65 @@ const parseJsonObject = (value: string): Record<string, unknown> | null => {
 
 const readResponseString = (value: unknown, fallback: string) => {
   return typeof value === "string" && value.trim() ? value : fallback;
+};
+
+const readNumberValue = (value: unknown, fallback = 0) => {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> => {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+};
+
+type SuggestedResponseMatch = {
+  id: string;
+  score: number;
+  category: string;
+  subCategory: string;
+  type: string;
+  description: string;
+};
+
+type SuggestedResponseResult = {
+  suggestedResponse: string;
+  matches: SuggestedResponseMatch[];
+  retrievalStats: {
+    corpusSize: number;
+    usedExamples: number;
+    sourceColumn: string;
+    mode?: string;
+  };
+};
+
+const normalizeSuggestedResponse = (data: Record<string, unknown>): SuggestedResponseResult => {
+  const stats = asRecord(data.retrievalStats);
+  const matches = Array.isArray(data.matches)
+    ? data.matches.map((item) => {
+      const match = asRecord(item);
+
+      return {
+        id: readResponseString(match.id, ""),
+        score: readNumberValue(match.score),
+        category: readResponseString(match.category, "Non classé"),
+        subCategory: readResponseString(match.subCategory, ""),
+        type: readResponseString(match.type, "Non classé"),
+        description: readResponseString(match.description, ""),
+      };
+    }).filter((match) => match.id && match.description)
+    : [];
+
+  return {
+    suggestedResponse: readResponseString(data.suggestedResponse, ""),
+    matches,
+    retrievalStats: {
+      corpusSize: readNumberValue(stats.corpusSize),
+      usedExamples: readNumberValue(stats.usedExamples, matches.length),
+      sourceColumn: readResponseString(stats.sourceColumn, "Réponse client"),
+      mode: readResponseString(stats.mode, ""),
+    },
+  };
 };
 
 type BrowserSpeechRecognitionResultEvent = {
@@ -97,6 +157,9 @@ export default function Dashboard() {
   const [isReformulating, setIsReformulating] = useState(false);
   const [showReformulateModal, setShowReformulateModal] = useState(false);
   const [reformulatedText, setReformulatedText] = useState("");
+  const [isSuggestingResponse, setIsSuggestingResponse] = useState(false);
+  const [suggestedResponse, setSuggestedResponse] = useState<SuggestedResponseResult | null>(null);
+  const [suggestionCopied, setSuggestionCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAnalyse = async () => {
@@ -125,13 +188,15 @@ export default function Dashboard() {
       }
 
       if (!data) {
-        throw new Error("API returned an empty response");
+        throw new Error("La route /api/predict a retourne une reponse vide. Relancez l'application avec next dev ou next start.");
       }
 
       setResults(normalizePredictionResponse(data));
     } catch (error) {
       console.error("Analysis error:", error);
-      alert("Une erreur est survenue lors de l'analyse.");
+      alert(error instanceof Error && error.message
+        ? error.message
+        : "Une erreur est survenue lors de l'analyse.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -253,6 +318,63 @@ export default function Dashboard() {
     }
   };
 
+  const handleSuggestResponse = async () => {
+    if (!inputText.trim()) return;
+
+    setIsSuggestingResponse(true);
+    setSuggestionCopied(false);
+    try {
+      const response = await fetch('/api/suggest-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: inputText,
+          classification: results ? {
+            category: results.category,
+            subCategory: results.subCategory,
+            type: results.type,
+          } : undefined,
+        }),
+      });
+
+      const rawText = await response.text();
+      const data = parseJsonObject(rawText);
+
+      if (!response.ok) {
+        throw new Error(readResponseString(data?.error, `API responded with ${response.status}: ${rawText}`));
+      }
+
+      if (!data) {
+        throw new Error("API returned an empty response");
+      }
+
+      const normalizedSuggestion = normalizeSuggestedResponse(data);
+      if (!normalizedSuggestion.suggestedResponse) {
+        throw new Error("La route RAG n'a pas renvoyé de réponse suggérée.");
+      }
+
+      setSuggestedResponse(normalizedSuggestion);
+    } catch (error) {
+      console.error("Suggested response error:", error);
+      alert("Une erreur est survenue lors de la génération de la réponse suggérée.");
+    } finally {
+      setIsSuggestingResponse(false);
+    }
+  };
+
+  const handleCopySuggestedResponse = async () => {
+    if (!suggestedResponse?.suggestedResponse) return;
+
+    try {
+      await navigator.clipboard.writeText(suggestedResponse.suggestedResponse);
+      setSuggestionCopied(true);
+      window.setTimeout(() => setSuggestionCopied(false), 1800);
+    } catch (error) {
+      console.error("Copy suggested response error:", error);
+      alert("Impossible de copier la réponse suggérée.");
+    }
+  };
+
   const triggerUpload = () => {
     fileInputRef.current?.click();
   };
@@ -332,7 +454,11 @@ export default function Dashboard() {
               <div className="space-y-4">
                 <textarea
                   value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
+                  onChange={(e) => {
+                    setInputText(e.target.value);
+                    setSuggestedResponse(null);
+                    setSuggestionCopied(false);
+                  }}
                   placeholder="Décrivez votre requête ou le contenu du document ici..."
                   className="w-full min-h-[120px] sm:min-h-[160px] p-3 sm:p-4 bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-brand-cyan focus:border-transparent outline-none transition-all resize-none text-sm sm:text-base text-gray-700"
                 />
@@ -381,6 +507,24 @@ export default function Dashboard() {
 
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     <button
+                      onClick={handleSuggestResponse}
+                      disabled={isSuggestingResponse || !inputText.trim()}
+                      className={`
+                        px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-bold transition-all duration-300 text-sm sm:text-base border flex items-center justify-center gap-2
+                        ${isSuggestingResponse
+                          ? 'bg-cyan-50 text-brand-cyan border-brand-cyan/20 cursor-wait'
+                          : 'bg-white text-brand-navy border-brand-cyan/30 hover:bg-cyan-50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed'}
+                      `}
+                    >
+                      {isSuggestingResponse ? (
+                        <div className="w-4 h-4 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Sparkles size={16} />
+                      )}
+                      {isSuggestingResponse ? "Suggestion..." : "Suggérer réponse"}
+                    </button>
+
+                    <button
                       onClick={handleReformulate}
                       disabled={isReformulating || !inputText.trim()}
                       className={`
@@ -421,6 +565,81 @@ export default function Dashboard() {
               </div>
             </div>
           </section>
+
+          {(isSuggestingResponse || suggestedResponse) && (
+            <section className="lg:col-span-12">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 space-y-4 sm:space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-50 pb-4">
+                  <div className="flex items-center gap-3">
+                    <Sparkles size={20} className="text-brand-cyan" />
+                    <h3 className="font-bold text-brand-navy text-lg">Réponse suggérée</h3>
+                  </div>
+                  {suggestedResponse && (
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-gray-500">
+                      <span className="rounded-lg border border-brand-cyan/20 bg-cyan-50 px-3 py-1 text-brand-navy">
+                        {suggestedResponse.retrievalStats.usedExamples} exemples RAG
+                      </span>
+                      <span className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-1">
+                        {suggestedResponse.retrievalStats.sourceColumn}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {isSuggestingResponse ? (
+                  <div className="flex items-center gap-3 rounded-lg border border-brand-cyan/20 bg-cyan-50/40 p-4 text-sm font-semibold text-brand-navy">
+                    <div className="w-4 h-4 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin"></div>
+                    Génération de la réponse...
+                  </div>
+                ) : suggestedResponse && (
+                  <>
+                    <div className="rounded-lg border border-brand-cyan/20 bg-cyan-50/30 p-4 text-sm sm:text-base leading-7 text-brand-navy whitespace-pre-line">
+                      {suggestedResponse.suggestedResponse}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+                      <button
+                        onClick={handleCopySuggestedResponse}
+                        className="px-4 py-2.5 rounded-lg font-bold text-sm border border-gray-200 text-brand-navy hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        {suggestionCopied ? <Check size={16} /> : <Copy size={16} />}
+                        {suggestionCopied ? "Copié" : "Copier"}
+                      </button>
+                      <button
+                        onClick={handleSuggestResponse}
+                        disabled={isSuggestingResponse || !inputText.trim()}
+                        className="px-4 py-2.5 rounded-lg font-bold text-sm bg-brand-navy text-white hover:bg-navy-900 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Sparkles size={16} />
+                        Régénérer
+                      </button>
+                    </div>
+
+                    {suggestedResponse.matches.length > 0 && (
+                      <div className="border-t border-gray-50 pt-4 space-y-3">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                          Exemples RAG retenus
+                        </p>
+                        <div className="divide-y divide-gray-100">
+                          {suggestedResponse.matches.slice(0, 3).map((match) => (
+                            <div key={match.id} className="py-3 flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                              <div className="min-w-0 space-y-1">
+                                <p className="text-sm font-bold text-brand-navy">{match.type}</p>
+                                <p className="text-xs sm:text-sm text-gray-500 leading-5">{match.description}</p>
+                              </div>
+                              <span className="shrink-0 text-[11px] font-bold text-brand-cyan bg-cyan-50 border border-brand-cyan/20 rounded-lg px-2.5 py-1">
+                                score {match.score}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Results Section */}
           <section className="lg:col-span-12 space-y-4">
