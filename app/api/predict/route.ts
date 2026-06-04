@@ -5,6 +5,7 @@ import { normalizePredictionResponse } from "@/lib/prediction";
 const OUT_OF_CONTEXT_ERROR = "MESSAGE_OUT_OF_CONTEXT";
 const OUT_OF_CONTEXT_MESSAGE = "Message out of context.";
 const CONTEXT_CONFIDENCE_THRESHOLD = 0.65;
+const GEMINI_FLASH_MODEL = "gemini-3.5-flash";
 
 type ContextDecision = {
   inContext: boolean;
@@ -81,7 +82,7 @@ const checkMessageContext = async (text: string): Promise<ContextDecision> => {
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: process.env.GEMINI_CONTEXT_MODEL || "gemini-2.5-flash-lite",
+    model: GEMINI_FLASH_MODEL,
     generationConfig: {
       temperature: 0,
       maxOutputTokens: 180,

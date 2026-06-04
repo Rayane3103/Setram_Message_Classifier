@@ -86,8 +86,7 @@ type WindowWithSpeechRecognition = Window & typeof globalThis & {
   webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
 };
 
-// Variable globale pour alterner et faire du fallback entre les modèles
-let currentReformulateModel = "gemini-2.5-flash";
+const GEMINI_FLASH_MODEL = "gemini-3.5-flash";
 
 export default function Dashboard() {
   const [inputText, setInputText] = useState("");
@@ -192,7 +191,7 @@ export default function Dashboard() {
       if (!apiKey) throw new Error("Clé API Gemini non configurée");
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-3.0-flash" });
+      const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
 
       const imagePart = await fileToGenerativePart(file);
       const prompt = "Extrais tout le texte de cette image de manière précise. Si c'est manuscrit, lis-le attentivement. Le texte peut être en français, anglais ou arabe. Renvoie uniquement le texte extrait tel quel, sans commentaires ni traduction.";
@@ -238,31 +237,9 @@ export default function Dashboard() {
         "${inputText}"
       `;
 
-      const attemptGeneration = async (modelName: string) => {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(prompt);
-        return await result.response;
-      };
-
-      let response;
-      try {
-        response = await attemptGeneration(currentReformulateModel);
-        // Si ça a marché, on bascule de modèle pour le prochain coup (Round Robin)
-        currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-
-        // En cas d'erreur de quota (429), on bascule immédiatement et on réessaie avec l'autre
-        if (message.includes('429')) {
-          console.warn(`[Quota Exceeded] Le modèle ${currentReformulateModel} a atteint sa limite. Basculement sur l'autre modèle...`);
-          currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
-          response = await attemptGeneration(currentReformulateModel);
-          // Si le backup réussit, on anticipe la prochaine bascule
-          currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
-        } else {
-          throw err;
-        }
-      }
+      const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
 
       const text = response.text().trim();
 
@@ -270,7 +247,7 @@ export default function Dashboard() {
       setShowReformulateModal(true);
     } catch (error) {
       console.error("Reformulation error:", error);
-      alert("Une erreur est survenue lors de la reformulation. Vos limites sont peut-être totalement épuisées pour les deux modèles.");
+      alert("Une erreur est survenue lors de la reformulation. Vos limites Gemini sont peut-être épuisées.");
     } finally {
       setIsReformulating(false);
     }
@@ -591,7 +568,7 @@ export default function Dashboard() {
               <div className="space-y-2">
                 <p className="text-xs font-bold text-brand-cyan uppercase tracking-widest flex items-center gap-2">
                   Nouvelle Version
-                  <span className="bg-brand-cyan/10 text-[10px] px-2 py-0.5 rounded-full">Gemini 1.5 Flash</span>
+                  <span className="bg-brand-cyan/10 text-[10px] px-2 py-0.5 rounded-full">Gemini 3.5 Flash</span>
                 </p>
                 <div className="p-4 bg-cyan-50/30 rounded-xl border border-brand-cyan/20 text-sm font-medium text-brand-navy min-h-[150px] max-h-[250px] overflow-y-auto">
                   {reformulatedText}

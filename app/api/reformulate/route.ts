@@ -1,8 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// Variable globale pour alterner entre les deux modèles à chaque appel (Round-Robin)
-let useFlashModel = true;
+const GEMINI_FLASH_MODEL = "gemini-3.5-flash";
 
 export async function POST(req: Request) {
   try {
@@ -21,12 +20,7 @@ export async function POST(req: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // Sélection du modèle
-    const modelName = useFlashModel ? "gemini-2.5-flash" : "gemini-2.5-flash-lite";
-    useFlashModel = !useFlashModel; // Inversion pour le prochain appel
-    
-    const model = genAI.getGenerativeModel({ model: modelName });
+    const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
 
     const prompt = `
       Tu es un assistant de service client pour la SETRAM (Société d'Exploitation des Tramways). 
