@@ -2,7 +2,6 @@
 
 import React, { useState, useRef } from 'react';
 import Image from 'next/image';
-import Tesseract from 'tesseract.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
   OUT_OF_CONTEXT_NOTE,
@@ -17,7 +16,6 @@ import {
   Layers,
   Tag,
   ArrowRight,
-  ChevronRight,
   Activity,
   AlertCircle,
   Mic,
@@ -42,6 +40,52 @@ const fileToGenerativePart = async (file: File) => {
   };
 };
 
+const OUT_OF_CONTEXT_API_ERROR = "MESSAGE_OUT_OF_CONTEXT";
+
+const parseJsonObject = (value: string): Record<string, unknown> | null => {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const readResponseString = (value: unknown, fallback: string) => {
+  return typeof value === "string" && value.trim() ? value : fallback;
+};
+
+type BrowserSpeechRecognitionResultEvent = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+type BrowserSpeechRecognitionErrorEvent = {
+  error: string;
+};
+
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: BrowserSpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+type WindowWithSpeechRecognition = Window & typeof globalThis & {
+  SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+};
+
 // Variable globale pour alterner et faire du fallback entre les modèles
 let currentReformulateModel = "gemini-2.5-flash";
 
@@ -61,10 +105,7 @@ export default function Dashboard() {
 
     setIsAnalyzing(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_PREDICTION_API_URL;
-      if (!apiUrl) throw new Error("URL de l'API de prédiction non configurée");
-
-      const response = await fetch(apiUrl, {
+      const response = await fetch('/api/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText }),
@@ -72,16 +113,22 @@ export default function Dashboard() {
 
       const rawText = await response.text();
       console.log("Raw Prediction response:", response.status, rawText);
+      const data = parseJsonObject(rawText);
 
       if (!response.ok) {
-        throw new Error(`API responded with ${response.status}: ${rawText}`);
+        if (response.status === 422 && data?.error === OUT_OF_CONTEXT_API_ERROR) {
+          setResults(null);
+          alert(readResponseString(data.message, "Message out of context."));
+          return;
+        }
+
+        throw new Error(readResponseString(data?.error, `API responded with ${response.status}: ${rawText}`));
       }
 
-      if (!rawText) {
+      if (!data) {
         throw new Error("API returned an empty response");
       }
 
-      const data = JSON.parse(rawText);
       setResults(normalizePredictionResponse(data));
     } catch (error) {
       console.error("Analysis error:", error);
@@ -93,7 +140,8 @@ export default function Dashboard() {
 
   const toggleListening = () => {
     if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const speechWindow = window as WindowWithSpeechRecognition;
+      const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
 
       if (!SpeechRecognition) {
         alert("Désolé, votre navigateur ne supporte pas la reconnaissance vocale.");
@@ -109,13 +157,15 @@ export default function Dashboard() {
         setIsListening(true);
       };
 
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
+      recognition.onresult = (event) => {
+        const transcript = event.results[0]?.[0]?.transcript;
+        if (!transcript) return;
+
         setInputText((prev) => prev ? `${prev} ${transcript}` : transcript);
         setIsListening(false);
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
         setIsListening(false);
       };
@@ -199,9 +249,11 @@ export default function Dashboard() {
         response = await attemptGeneration(currentReformulateModel);
         // Si ça a marché, on bascule de modèle pour le prochain coup (Round Robin)
         currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
-      } catch (err: any) {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+
         // En cas d'erreur de quota (429), on bascule immédiatement et on réessaie avec l'autre
-        if (err.message && err.message.includes('429')) {
+        if (message.includes('429')) {
           console.warn(`[Quota Exceeded] Le modèle ${currentReformulateModel} a atteint sa limite. Basculement sur l'autre modèle...`);
           currentReformulateModel = currentReformulateModel === "gemini-2.5-flash" ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
           response = await attemptGeneration(currentReformulateModel);
@@ -285,7 +337,7 @@ export default function Dashboard() {
       <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-5 sm:space-y-8">
         {/* Header Section */}
         <div className="space-y-2">
-          <h2 className="text-xl sm:text-3xl font-extrabold text-brand-navy">Dashboard d'Analyse</h2>
+          <h2 className="text-xl sm:text-3xl font-extrabold text-brand-navy">Dashboard d&apos;Analyse</h2>
           <p className="text-sm sm:text-base text-gray-500 max-w-2xl">
             Utilisez notre intelligence artificielle pour classifier automatiquement vos requêtes et documents selon les normes SETRAM.
           </p>

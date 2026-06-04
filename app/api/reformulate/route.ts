@@ -48,14 +48,20 @@ export async function POST(req: Request) {
     const reformulatedText = response.text().trim();
 
     return NextResponse.json({ reformulatedText });
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Inconnue";
+    const stack = error instanceof Error ? error.stack : undefined;
+    const status = error && typeof error === "object" && "status" in error
+      ? error.status
+      : undefined;
+
     console.error("Gemini API Error Detail:", {
-      message: error.message,
-      stack: error.stack,
-      status: error.status,
+      message,
+      stack,
+      status,
     });
     return NextResponse.json(
-      { error: `Erreur Gemini: ${error.message || "Inconnue"}` },
+      { error: `Erreur Gemini: ${message}` },
       { status: 500 }
     );
   }
