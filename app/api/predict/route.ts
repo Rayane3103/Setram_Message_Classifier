@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizePredictionResponse } from "@/lib/prediction";
 
 export async function POST(req: Request) {
   try {
@@ -35,18 +36,15 @@ export async function POST(req: Request) {
 
     const data = await response.json();
 
-    // Map French fields to English camelCase for frontend consistency
-    const result = {
-      category: data["catégorie"] || "Inconnu",
-      subCategory: data["sous_catégorie"] || "Inconnu",
-      type: data["type"] || "Inconnu",
-    };
+    const result = normalizePredictionResponse(data);
 
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error) {
     console.error("Prediction API Proxy Error:", error);
+    const message = error instanceof Error ? error.message : "Erreur inconnue";
+
     return NextResponse.json(
-      { error: `Erreur serveur: ${error.message}` },
+      { error: `Erreur serveur: ${message}` },
       { status: 500 }
     );
   }

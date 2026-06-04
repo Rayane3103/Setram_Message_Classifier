@@ -5,6 +5,12 @@ import Image from 'next/image';
 import Tesseract from 'tesseract.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
+  OUT_OF_CONTEXT_NOTE,
+  formatConfidence,
+  normalizePredictionResponse,
+  type PredictionResult
+} from '@/lib/prediction';
+import {
   Send,
   Upload,
   FileText,
@@ -42,7 +48,7 @@ let currentReformulateModel = "gemini-2.5-flash";
 export default function Dashboard() {
   const [inputText, setInputText] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [results, setResults] = useState<{ category: string, subCategory: string, type: string } | null>(null);
+  const [results, setResults] = useState<PredictionResult | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isOCRLoading, setIsOCRLoading] = useState(false);
   const [isReformulating, setIsReformulating] = useState(false);
@@ -76,11 +82,7 @@ export default function Dashboard() {
       }
 
       const data = JSON.parse(rawText);
-      setResults({
-        category: data["catégorie"] || "Inconnu",
-        subCategory: data["sous_catégorie"] || "Inconnu",
-        type: data["type"] || "Inconnu",
-      });
+      setResults(normalizePredictionResponse(data));
     } catch (error) {
       console.error("Analysis error:", error);
       alert("Une erreur est survenue lors de l'analyse.");
@@ -235,7 +237,12 @@ export default function Dashboard() {
       classification: {
         category: results.category,
         subCategory: results.subCategory,
-        type: results.type
+        type: results.type,
+        outOfContext: results.outOfContext,
+        threshold: results.threshold,
+        overallConfidence: results.overallConfidence,
+        confidence: results.confidence,
+        bestGuess: results.bestGuess
       }
     };
 
@@ -393,9 +400,14 @@ export default function Dashboard() {
                 <div className="w-2 h-5 sm:h-6 bg-brand-cyan rounded-full"></div>
                 Résultats de Classification
               </h3>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {results && (
                   <>
+                    {typeof results.overallConfidence === "number" && (
+                      <span className="text-xs font-bold text-brand-navy bg-cyan-50 border border-brand-cyan/20 px-3 sm:px-4 py-2 rounded-lg">
+                        Confiance {formatConfidence(results.overallConfidence)}
+                      </span>
+                    )}
                     <button
                       onClick={handleExportJSON}
                       className="flex items-center gap-2 text-brand-navy font-bold text-xs bg-gray-100 hover:bg-gray-200 px-3 sm:px-4 py-2 rounded-lg transition-all border border-gray-200"
@@ -408,6 +420,13 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+
+            {results?.outOfContext && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                <span>{results.note || OUT_OF_CONTEXT_NOTE}</span>
+              </div>
+            )}
 
             <div className="relative">
               {/* Step indicator line */}
