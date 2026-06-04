@@ -24,8 +24,54 @@ const getJsonFromModelText = (text: string) => {
   return jsonMatch ? jsonMatch[0] : cleaned;
 };
 
+const parseJsonFromText = (text: string) => {
+  const jsonText = getJsonFromModelText(text);
+
+  try {
+    return JSON.parse(jsonText) as unknown;
+  } catch (error) {
+    const preview = text.trim().slice(0, 80);
+    const message = error instanceof Error ? error.message : "invalid JSON";
+
+    throw new Error(`Réponse JSON invalide (${message}). Début reçu: ${preview}`);
+  }
+};
+
+const localContextFallback = (text: string): ContextDecision => {
+  const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const keywords = [
+    "tram",
+    "tramway",
+    "station",
+    "ligne",
+    "rame",
+    "ticket",
+    "carte",
+    "abonnement",
+    "controle",
+    "agent",
+    "retard",
+    "panne",
+    "objet perdu",
+    "transport",
+    "setram",
+  ];
+  const matched = keywords.filter((keyword) => normalized.includes(keyword));
+
+  return {
+    inContext: matched.length > 0,
+    confidence: matched.length > 0 ? 0.75 : 0.35,
+    reason: matched.length > 0
+      ? `Fallback lexical: ${matched.slice(0, 4).join(", ")}`
+      : "Fallback lexical: aucun mot-clé transport détecté",
+  };
+};
+
 const parseContextDecision = (text: string): ContextDecision => {
-  const parsed = JSON.parse(getJsonFromModelText(text)) as Record<string, unknown>;
+  const parsed = parseJsonFromText(text) as Record<string, unknown>;
 
   if (typeof parsed.in_context !== "boolean") {
     throw new Error("Gemini context guard returned invalid JSON");
@@ -47,11 +93,7 @@ const parsePredictionPayload = (text: string) => {
     return null;
   }
 
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    throw new Error("Prediction API returned invalid JSON");
-  }
+  return parseJsonFromText(trimmed);
 };
 
 const buildContextGuardPrompt = (text: string) => `
@@ -107,7 +149,12 @@ const checkMessageContext = async (text: string): Promise<ContextDecision> => {
   const result = await model.generateContent(buildContextGuardPrompt(text));
   const response = await result.response;
 
-  return parseContextDecision(response.text());
+  try {
+    return parseContextDecision(response.text());
+  } catch (error) {
+    console.warn("Gemini context guard returned non-JSON, using local fallback:", error);
+    return localContextFallback(text);
+  }
 };
 
 export async function POST(req: Request) {
