@@ -1,16 +1,32 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { normalizePredictionResponse } from "@/lib/prediction";
+import {
+  searchClientResponseExamples,
+  type RankedClientResponseExample,
+} from "@/lib/client-response-rag";
+
+export const runtime = "nodejs";
 
 const OUT_OF_CONTEXT_ERROR = "MESSAGE_OUT_OF_CONTEXT";
 const OUT_OF_CONTEXT_MESSAGE = "Message out of context.";
-const CONTEXT_CONFIDENCE_THRESHOLD = 0.65;
-const GEMINI_FLASH_MODEL = "gemini-3.5-flash";
+const CONTEXT_SIMILARITY_THRESHOLD = 0.4;
+const CONTEXT_SEARCH_LIMIT = 3;
+
+type ContextMatch = {
+  id: string;
+  score: number;
+  category: string;
+  subCategory: string;
+  type: string;
+  description: string;
+};
 
 type ContextDecision = {
   inContext: boolean;
   confidence: number;
+  threshold: number;
   reason: string;
+  match?: ContextMatch;
 };
 
 const getJsonFromModelText = (text: string) => {
@@ -33,133 +49,8 @@ const parseJsonFromText = (text: string) => {
     const preview = text.trim().slice(0, 80);
     const message = error instanceof Error ? error.message : "invalid JSON";
 
-    throw new Error(`Réponse JSON invalide (${message}). Début reçu: ${preview}`);
+    throw new Error(`Reponse JSON invalide (${message}). Debut recu: ${preview}`);
   }
-};
-
-const localContextFallback = (text: string): ContextDecision => {
-  const normalized = text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  const includesAny = (keywords: string[]) =>
-    keywords.some((keyword) => normalized.includes(keyword));
-  const transportAnchors = [
-    "tram",
-    "tramway",
-    "setram",
-    "transport",
-  ];
-  const serviceSignals = [
-    "station",
-    "ligne",
-    "rame",
-    "quai",
-    "arret",
-    "ticket",
-    "carte",
-    "abonnement",
-    "controle",
-    "agent",
-    "chauffeur",
-    "conducteur",
-    "driver",
-    "retard",
-    "panne",
-    "incident",
-    "accident",
-    "securite",
-    "objet perdu",
-    "perdu",
-    "reclamation",
-    "plainte",
-    "probleme",
-    "agressif",
-    "agressive",
-    "speeding",
-    "vitesse",
-    "conduit",
-    "driving",
-  ];
-  const anchorMatches = transportAnchors.filter((keyword) => normalized.includes(keyword));
-  const signalMatches = serviceSignals.filter((keyword) => normalized.includes(keyword));
-  const safetySignals = ["agressif", "agressive", "speeding", "vitesse", "conduit", "driving"];
-  const fareSignals = ["ticket", "billet", "titre", "carte", "abonnement", "paiement", "validation", "valider"];
-  const inspectionSignals = ["controle", "controleur", "controler", "verificateur", "amende", "pv"];
-  const staffSignals = ["agent", "personnel", "chauffeur", "conducteur", "driver", "controleur"];
-  const complaintSignals = [
-    "mal parle",
-    "mal parler",
-    "mal comport",
-    "comportement",
-    "impoli",
-    "agressif",
-    "agressive",
-    "insulte",
-    "menace",
-    "plainte",
-    "reclamation",
-    "probleme",
-    "refuse",
-  ];
-  const hasFareSignal = includesAny(fareSignals);
-  const hasInspectionSignal = includesAny(inspectionSignals);
-  const hasStaffSignal = includesAny(staffSignals);
-  const hasComplaintSignal = includesAny(complaintSignals);
-  const hasTransportRoleSafetyIssue =
-    hasStaffSignal &&
-    signalMatches.some((keyword) => safetySignals.includes(keyword));
-  const hasStrongServiceSignal = signalMatches.some((keyword) => !safetySignals.includes(keyword));
-  const hasFareInspectionScenario =
-    (hasFareSignal && hasInspectionSignal) ||
-    (hasInspectionSignal && hasStaffSignal && hasComplaintSignal) ||
-    (hasFareSignal && hasStaffSignal && hasComplaintSignal);
-  const hasStaffComplaintScenario = hasStaffSignal && hasComplaintSignal;
-  const inContext =
-    (anchorMatches.length > 0 && hasStrongServiceSignal) ||
-    hasTransportRoleSafetyIssue ||
-    hasFareInspectionScenario ||
-    hasStaffComplaintScenario;
-  const matched = [...anchorMatches, ...signalMatches].slice(0, 5);
-  const confidence = inContext
-    ? hasFareInspectionScenario
-      ? 0.82
-      : hasStaffComplaintScenario
-        ? 0.72
-        : 0.75
-    : anchorMatches.length > 0
-      ? 0.5
-      : 0.35;
-
-  return {
-    inContext,
-    confidence,
-    reason: inContext
-      ? hasFareInspectionScenario
-        ? "Fallback sémantique simple: réclamation liée à une interaction de contrôle/titre de transport"
-        : hasStaffComplaintScenario
-          ? "Fallback sémantique simple: réclamation liée au comportement d'un membre du personnel"
-          : `Fallback sémantique simple: scénario service transport détecté (${matched.join(", ")})`
-      : anchorMatches.length > 0
-        ? "Fallback sémantique simple: mot transport isolé sans plainte/service clair"
-        : "Fallback sémantique simple: aucun lien transport/service détecté",
-  };
-};
-
-const parseContextDecision = (text: string): ContextDecision => {
-  const parsed = parseJsonFromText(text) as Record<string, unknown>;
-
-  if (typeof parsed.in_context !== "boolean") {
-    throw new Error("Gemini context guard returned invalid JSON");
-  }
-
-  return {
-    inContext: parsed.in_context,
-    confidence: typeof parsed.confidence === "number" && Number.isFinite(parsed.confidence)
-      ? parsed.confidence
-      : 0,
-    reason: typeof parsed.reason === "string" ? parsed.reason : "",
-  };
 };
 
 const parsePredictionPayload = (text: string) => {
@@ -172,60 +63,54 @@ const parsePredictionPayload = (text: string) => {
   return parseJsonFromText(trimmed);
 };
 
-const buildContextGuardPrompt = (text: string) => `
-Tu es un garde de contexte permissif pour un système de classification des messages envoyés par des clients ou passagers d'une société de tramway.
+const formatScore = (score: number) => score.toFixed(2);
 
-Ta tâche:
-Dire si le message peut être traité par le système SETRAM ou s'il est clairement hors contexte.
+const summarizeMatchClassification = (match: RankedClientResponseExample) =>
+  [match.category, match.subCategory, match.type].filter(Boolean).join(" / ");
 
-Réponds in_context=true si le message peut concerner, même indirectement:
-- tramway, transport, station, rame, ligne, arrêt, trajet;
-- client, passager, ticket, abonnement, carte, tarif, paiement;
-- agent, conducteur, contrôleur, sécurité, vol, agression, objet perdu/trouvé;
-- horaire, retard, panne, réclamation, signalement, suggestion, information,demande d'informations, question sur le tramway et la societé du tramway setram,  remerciement;
-- emploi, stage, formation, CV ou service lié à la société.
+const toContextMatch = (match: RankedClientResponseExample): ContextMatch => ({
+  id: match.id,
+  score: Number(match.score.toFixed(3)),
+  category: match.category,
+  subCategory: match.subCategory,
+  type: match.type,
+  description: match.description.slice(0, 220),
+});
 
-Sois permissif:
-Si le message est ambigu mais pourrait venir d'un client/passager ou être traité par une société de tramway, réponds true.
+const buildContextReason = (
+  match: RankedClientResponseExample | undefined,
+  similarity: number,
+  inContext: boolean
+) => {
+  const threshold = formatScore(CONTEXT_SIMILARITY_THRESHOLD);
 
-Réponds false seulement si le message est clairement sans lien avec une société de tramway ou ses services.
+  if (!match) {
+    return `Aucun message historique similaire trouve dans Pinecone. Seuil requis: ${threshold}.`;
+  }
 
-Réponds uniquement avec un objet JSON valide:
-{
-  "in_context": boolean,
-  "confidence": number,
-  "reason": string
-}
+  const matchSummary = summarizeMatchClassification(match) || "exemple historique";
+  const score = formatScore(similarity);
 
-Message:
-${JSON.stringify(text)}
-`;
+  if (inContext) {
+    return `Similarite Pinecone ${score}, au-dessus du seuil ${threshold}, avec un message historique SETRAM (${matchSummary}).`;
+  }
+
+  return `Similarite Pinecone maximale ${score}, inferieure au seuil ${threshold}. Le message est trop eloigne des messages historiques SETRAM.`;
+};
 
 const checkMessageContext = async (text: string): Promise<ContextDecision> => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Clé API Gemini non configurée");
-  }
+  const retrieval = await searchClientResponseExamples(text, CONTEXT_SEARCH_LIMIT);
+  const topMatch = retrieval.matches[0];
+  const similarity = topMatch?.score ?? 0;
+  const inContext = similarity >= CONTEXT_SIMILARITY_THRESHOLD;
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_FLASH_MODEL,
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 180,
-      responseMimeType: "application/json",
-    },
-  });
-
-  const result = await model.generateContent(buildContextGuardPrompt(text));
-  const response = await result.response;
-
-  try {
-    return parseContextDecision(response.text());
-  } catch (error) {
-    console.warn("Gemini context guard returned non-JSON, using local fallback:", error);
-    return localContextFallback(text);
-  }
+  return {
+    inContext,
+    confidence: similarity,
+    threshold: CONTEXT_SIMILARITY_THRESHOLD,
+    reason: buildContextReason(topMatch, similarity, inContext),
+    ...(topMatch ? { match: toContextMatch(topMatch) } : {}),
+  };
 };
 
 export async function POST(req: Request) {
@@ -238,11 +123,8 @@ export async function POST(req: Request) {
     }
 
     const contextDecision = await checkMessageContext(text);
-    const isInContext =
-      contextDecision.inContext &&
-      contextDecision.confidence >= CONTEXT_CONFIDENCE_THRESHOLD;
 
-    if (!isInContext) {
+    if (!contextDecision.inContext) {
       return NextResponse.json(
         {
           error: OUT_OF_CONTEXT_ERROR,
@@ -257,7 +139,7 @@ export async function POST(req: Request) {
     const apiUrl = process.env.NEXT_PUBLIC_PREDICTION_API_URL;
     if (!apiUrl) {
       return NextResponse.json(
-        { error: "URL de l'API de prédiction non configurée" },
+        { error: "URL de l'API de prediction non configuree" },
         { status: 500 }
       );
     }
@@ -292,7 +174,10 @@ export async function POST(req: Request) {
 
     const result = normalizePredictionResponse(data);
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      context: contextDecision,
+    });
   } catch (error) {
     console.error("Prediction API Proxy Error:", error);
     const message = error instanceof Error ? error.message : "Erreur inconnue";

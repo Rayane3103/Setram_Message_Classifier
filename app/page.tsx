@@ -107,6 +107,10 @@ const readNumberValue = (value: unknown, fallback = 0) => {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 };
 
+const readOptionalNumberValue = (value: unknown) => {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+};
+
 const asRecord = (value: unknown): Record<string, unknown> => {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -130,6 +134,18 @@ type SuggestedResponseResult = {
     usedExamples: number;
     sourceColumn: string;
     mode?: string;
+  };
+};
+
+type OutOfContextNotice = {
+  message: string;
+  reason: string;
+  score?: number;
+  threshold?: number;
+  match?: {
+    score?: number;
+    type: string;
+    description: string;
   };
 };
 
@@ -265,6 +281,38 @@ const normalizeSuggestedResponse = (data: Record<string, unknown>): SuggestedRes
   };
 };
 
+const formatSimilarity = (value: number) => value.toFixed(2);
+
+const normalizeOutOfContextNotice = (
+  data: Record<string, unknown> | null
+): OutOfContextNotice => {
+  const context = asRecord(data?.context);
+  const match = asRecord(context.match);
+  const matchDescription = readResponseString(match.description, "");
+  const matchType = readResponseString(match.type, "");
+  const matchScore = readOptionalNumberValue(match.score);
+  const hasMatch = Boolean(matchDescription || matchType || matchScore !== undefined);
+
+  return {
+    message: readResponseString(data?.message, "Message out of context."),
+    reason: readResponseString(
+      context.reason,
+      "La similarite Pinecone est sous le seuil requis."
+    ),
+    score: readOptionalNumberValue(context.confidence),
+    threshold: readOptionalNumberValue(context.threshold),
+    ...(hasMatch
+      ? {
+        match: {
+          score: matchScore,
+          type: matchType,
+          description: matchDescription,
+        },
+      }
+      : {}),
+  };
+};
+
 type BrowserSpeechRecognitionResultEvent = {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
 };
@@ -302,6 +350,7 @@ export default function Dashboard() {
   const [isOCRLoading, setIsOCRLoading] = useState(false);
   const [isReformulating, setIsReformulating] = useState(false);
   const [showReformulateModal, setShowReformulateModal] = useState(false);
+  const [outOfContextNotice, setOutOfContextNotice] = useState<OutOfContextNotice | null>(null);
   const [reformulatedText, setReformulatedText] = useState("");
   const [generatedReformulatedText, setGeneratedReformulatedText] = useState("");
   const [pendingReformulationSource, setPendingReformulationSource] = useState("");
@@ -362,6 +411,7 @@ export default function Dashboard() {
     setSavedFeedbackStatus(null);
     setResults(null);
     setAnalysisSnapshot(null);
+    setOutOfContextNotice(null);
     try {
       const response = await fetch('/api/predict', {
         method: 'POST',
@@ -376,7 +426,7 @@ export default function Dashboard() {
       if (!response.ok) {
         if (response.status === 422 && data?.error === OUT_OF_CONTEXT_API_ERROR) {
           setResults(null);
-          alert(readResponseString(data.message, "Message out of context."));
+          setOutOfContextNotice(normalizeOutOfContextNotice(data));
           return;
         }
 
@@ -441,6 +491,7 @@ export default function Dashboard() {
         setInputText((prev) => prev ? `${prev} ${transcript}` : transcript);
         setResults(null);
         setAnalysisSnapshot(null);
+        setOutOfContextNotice(null);
         setSuggestedResponse(null);
         setSuggestionCopied(false);
         setOriginalBeforeReformulation("");
@@ -493,6 +544,7 @@ export default function Dashboard() {
       setInputText(text);
       setResults(null);
       setAnalysisSnapshot(null);
+      setOutOfContextNotice(null);
       setSuggestedResponse(null);
       setSuggestionCopied(false);
       setOriginalBeforeReformulation("");
@@ -784,6 +836,7 @@ export default function Dashboard() {
                     setInputText(nextText);
                     setResults(null);
                     setAnalysisSnapshot(null);
+                    setOutOfContextNotice(null);
                     setSuggestedResponse(null);
                     setSuggestionCopied(false);
                     setPendingReformulationSource("");
@@ -1234,6 +1287,111 @@ export default function Dashboard() {
         </div>
       </footer>
 
+      {outOfContextNotice && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-brand-navy/45 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="out-of-context-title"
+            className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden animate-in zoom-in-95 duration-300"
+          >
+            <div className="p-4 sm:p-5 border-b border-gray-50 flex items-start justify-between gap-4 bg-amber-50/60">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <AlertCircle size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
+                    Analyse Pinecone
+                  </p>
+                  <h3 id="out-of-context-title" className="text-lg font-black text-brand-navy">
+                    Out of context
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOutOfContextNotice(null)}
+                aria-label="Fermer"
+                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-white/70 rounded-full transition-all shrink-0"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4">
+              <p className="text-sm font-semibold text-gray-600 leading-6">
+                {outOfContextNotice.message}
+              </p>
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 leading-6">
+                {outOfContextNotice.reason}
+              </div>
+
+              {(outOfContextNotice.score !== undefined || outOfContextNotice.threshold !== undefined) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      Similarite
+                    </p>
+                    <p className="text-lg font-black text-brand-navy">
+                      {outOfContextNotice.score !== undefined
+                        ? formatSimilarity(outOfContextNotice.score)
+                        : "--"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      Seuil
+                    </p>
+                    <p className="text-lg font-black text-brand-navy">
+                      {outOfContextNotice.threshold !== undefined
+                        ? formatSimilarity(outOfContextNotice.threshold)
+                        : "--"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {outOfContextNotice.match && (
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      Message le plus proche
+                    </p>
+                    {outOfContextNotice.match.score !== undefined && (
+                      <span className="text-[11px] font-bold text-brand-cyan bg-cyan-50 border border-brand-cyan/20 rounded-lg px-2.5 py-1">
+                        {formatSimilarity(outOfContextNotice.match.score)}
+                      </span>
+                    )}
+                  </div>
+                  {outOfContextNotice.match.type && (
+                    <p className="text-sm font-bold text-brand-navy">
+                      {outOfContextNotice.match.type}
+                    </p>
+                  )}
+                  {outOfContextNotice.match.description && (
+                    <p className="text-xs sm:text-sm text-gray-500 leading-5">
+                      {outOfContextNotice.match.description}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 sm:p-5 bg-gray-50/70 border-t border-gray-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setOutOfContextNotice(null)}
+                className="bg-brand-navy hover:bg-navy-900 text-white px-6 py-2.5 rounded-lg font-bold shadow-md hover:shadow-lg active:scale-95 transition-all text-sm flex items-center justify-center gap-2"
+              >
+                <X size={16} />
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reformulation Confirmation Modal */}
       {showReformulateModal && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-brand-navy/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -1304,6 +1462,7 @@ export default function Dashboard() {
                   });
                   setResults(null);
                   setAnalysisSnapshot(null);
+                  setOutOfContextNotice(null);
                   setSuggestedResponse(null);
                   setSuggestionCopied(false);
                   setPendingReformulationSource("");
