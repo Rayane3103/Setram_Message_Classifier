@@ -10,6 +10,8 @@ type FeedbackRequest = {
   status?: unknown;
   messageOriginal?: unknown;
   messageReformule?: unknown;
+  messageReformuleOriginal?: unknown;
+  messageReformuleCorrige?: unknown;
   originalClassification?: {
     category?: unknown;
     subCategory?: unknown;
@@ -57,8 +59,14 @@ export async function POST(req: Request) {
 
     const originalClassification = readClassification(body.originalClassification);
     const correctedClassification = readClassification(body.correctedClassification);
+    const messageReformule = readString(body.messageReformule);
+    const messageReformuleOriginal =
+      readString(body.messageReformuleOriginal) || messageReformule;
+    const messageReformuleCorrige =
+      readString(body.messageReformuleCorrige) || messageReformule;
     const generatedResponse = readString(body.generatedResponse);
     const correctedResponse = readString(body.correctedResponse);
+    const responseToSave = correctedResponse || generatedResponse;
 
     if (
       status === "misclassified" &&
@@ -75,7 +83,9 @@ export async function POST(req: Request) {
     const saved = await saveClassificationFeedback({
       status,
       messageOriginal,
-      messageReformule: readString(body.messageReformule),
+      messageReformule,
+      messageReformuleOriginal,
+      messageReformuleCorrige,
       catOriginal: originalClassification.category,
       sousCatOriginal: originalClassification.subCategory,
       typeOriginal: originalClassification.type,
@@ -89,9 +99,7 @@ export async function POST(req: Request) {
         ? originalClassification.type
         : correctedClassification.type,
       reponseGenere: generatedResponse,
-      reponseCorrige: status === "correct"
-        ? generatedResponse
-        : correctedResponse,
+      reponseCorrige: responseToSave,
     });
 
     return NextResponse.json({ ok: true, id: saved.id });

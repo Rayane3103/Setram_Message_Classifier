@@ -42,6 +42,49 @@ const fileToGenerativePart = async (file: File) => {
 };
 
 const OUT_OF_CONTEXT_API_ERROR = "MESSAGE_OUT_OF_CONTEXT";
+const REFORMULATION_CACHE_KEY = "setram:reformulation-cache";
+
+type ReformulationCache = {
+  original: string;
+  generatedReformulated: string;
+  reformulated: string;
+};
+
+const readReformulationCache = (): ReformulationCache | null => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const rawCache = window.sessionStorage.getItem(REFORMULATION_CACHE_KEY);
+    if (!rawCache) return null;
+
+    const cache = JSON.parse(rawCache) as Partial<ReformulationCache>;
+    if (typeof cache.original !== "string" || typeof cache.reformulated !== "string") {
+      return null;
+    }
+
+    return {
+      original: cache.original,
+      generatedReformulated: typeof cache.generatedReformulated === "string"
+        ? cache.generatedReformulated
+        : cache.reformulated,
+      reformulated: cache.reformulated,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const saveReformulationCache = (cache: ReformulationCache) => {
+  if (typeof window === "undefined") return;
+
+  window.sessionStorage.setItem(REFORMULATION_CACHE_KEY, JSON.stringify(cache));
+};
+
+const clearReformulationCache = () => {
+  if (typeof window === "undefined") return;
+
+  window.sessionStorage.removeItem(REFORMULATION_CACHE_KEY);
+};
 
 const parseJsonObject = (value: string): Record<string, unknown> | null => {
   if (!value) return null;
@@ -95,6 +138,8 @@ type FeedbackStatus = "correct" | "misclassified";
 type FeedbackAnalysisSnapshot = {
   messageOriginal: string;
   messageReformule: string;
+  messageReformuleOriginal: string;
+  messageReformuleCorrige: string;
   category: string;
   subCategory: string;
   type: string;
@@ -104,14 +149,12 @@ type CorrectionFormState = {
   category: string;
   subCategory: string;
   type: string;
-  response: string;
 };
 
 const emptyCorrectionForm: CorrectionFormState = {
   category: "",
   subCategory: "",
   type: "",
-  response: "",
 };
 
 const normalizeSuggestedResponse = (data: Record<string, unknown>): SuggestedResponseResult => {
@@ -181,8 +224,11 @@ export default function Dashboard() {
   const [isReformulating, setIsReformulating] = useState(false);
   const [showReformulateModal, setShowReformulateModal] = useState(false);
   const [reformulatedText, setReformulatedText] = useState("");
+  const [generatedReformulatedText, setGeneratedReformulatedText] = useState("");
+  const [pendingReformulationSource, setPendingReformulationSource] = useState("");
   const [isSuggestingResponse, setIsSuggestingResponse] = useState(false);
   const [suggestedResponse, setSuggestedResponse] = useState<SuggestedResponseResult | null>(null);
+  const [correctedResponseDraft, setCorrectedResponseDraft] = useState("");
   const [suggestionCopied, setSuggestionCopied] = useState(false);
   const [originalBeforeReformulation, setOriginalBeforeReformulation] = useState("");
   const [analysisSnapshot, setAnalysisSnapshot] = useState<FeedbackAnalysisSnapshot | null>(null);
@@ -192,6 +238,41 @@ export default function Dashboard() {
   const [feedbackNotice, setFeedbackNotice] = useState("");
   const [savedFeedbackStatus, setSavedFeedbackStatus] = useState<FeedbackStatus | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const getReformulationForCurrentInput = (): ReformulationCache | null => {
+    const currentMessage = inputText.trim();
+    if (!currentMessage) return null;
+
+    const stateOriginal = originalBeforeReformulation.trim();
+    const stateGeneratedReformulated = generatedReformulatedText.trim() || reformulatedText.trim();
+    const stateReformulated = reformulatedText.trim();
+    if (stateOriginal && stateReformulated === currentMessage) {
+      return {
+        original: stateOriginal,
+        generatedReformulated: stateGeneratedReformulated,
+        reformulated: currentMessage,
+      };
+    }
+
+    const cachedReformulation = readReformulationCache();
+    if (
+      cachedReformulation?.original.trim() &&
+      cachedReformulation.reformulated.trim() === currentMessage
+    ) {
+      return {
+        original: cachedReformulation.original.trim(),
+        generatedReformulated:
+          cachedReformulation.generatedReformulated.trim() ||
+          cachedReformulation.reformulated.trim(),
+        reformulated: currentMessage,
+      };
+    }
+
+    return null;
+  };
+
+  const getOriginalMessageForCurrentInput = () =>
+    getReformulationForCurrentInput()?.original || "";
 
   const handleAnalyse = async () => {
     if (!inputText.trim()) return;
@@ -229,12 +310,18 @@ export default function Dashboard() {
 
       const normalizedResult = normalizePredictionResponse(data);
       const analyzedMessage = inputText.trim();
-      const sourceMessage = originalBeforeReformulation.trim();
+      const reformulation = getReformulationForCurrentInput();
+      const sourceMessage = reformulation?.original || "";
+      const currentReformulatedMessage = reformulation?.reformulated || "";
+      const generatedReformulatedMessage =
+        reformulation?.generatedReformulated || currentReformulatedMessage;
 
       setResults(normalizedResult);
       setAnalysisSnapshot({
         messageOriginal: sourceMessage || analyzedMessage,
-        messageReformule: sourceMessage ? analyzedMessage : "",
+        messageReformule: sourceMessage ? currentReformulatedMessage : "",
+        messageReformuleOriginal: sourceMessage ? generatedReformulatedMessage : "",
+        messageReformuleCorrige: sourceMessage ? currentReformulatedMessage : "",
         category: normalizedResult.category,
         subCategory: normalizedResult.subCategory || "",
         type: normalizedResult.type,
@@ -278,6 +365,9 @@ export default function Dashboard() {
         setSuggestedResponse(null);
         setSuggestionCopied(false);
         setOriginalBeforeReformulation("");
+        setGeneratedReformulatedText("");
+        setPendingReformulationSource("");
+        clearReformulationCache();
         resetFeedbackState();
         setIsListening(false);
       };
@@ -327,6 +417,9 @@ export default function Dashboard() {
       setSuggestedResponse(null);
       setSuggestionCopied(false);
       setOriginalBeforeReformulation("");
+      setGeneratedReformulatedText("");
+      setPendingReformulationSource("");
+      clearReformulationCache();
       resetFeedbackState();
     } catch (error) {
       console.error("OCR (Gemini) Error:", error);
@@ -340,7 +433,7 @@ export default function Dashboard() {
   const handleReformulate = async () => {
     if (!inputText.trim()) return;
 
-    const reformulationSource = inputText.trim();
+    const reformulationSource = getOriginalMessageForCurrentInput() || inputText.trim();
     setIsReformulating(true);
     try {
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
@@ -368,7 +461,8 @@ export default function Dashboard() {
 
       const text = response.text().trim();
 
-      setOriginalBeforeReformulation(reformulationSource);
+      setPendingReformulationSource(reformulationSource);
+      setGeneratedReformulatedText(text);
       setReformulatedText(text);
       setShowReformulateModal(true);
     } catch (error) {
@@ -415,6 +509,9 @@ export default function Dashboard() {
       }
 
       setSuggestedResponse(normalizedSuggestion);
+      setCorrectedResponseDraft(normalizedSuggestion.suggestedResponse);
+      setFeedbackNotice("");
+      setSavedFeedbackStatus(null);
     } catch (error) {
       console.error("Suggested response error:", error);
       alert("Une erreur est survenue lors de la génération de la réponse suggérée.");
@@ -439,6 +536,7 @@ export default function Dashboard() {
   const resetFeedbackState = () => {
     setFeedbackMode(null);
     setCorrectionForm(emptyCorrectionForm);
+    setCorrectedResponseDraft("");
     setFeedbackNotice("");
     setSavedFeedbackStatus(null);
   };
@@ -451,7 +549,6 @@ export default function Dashboard() {
       category: "",
       subCategory: "",
       type: "",
-      response: suggestedResponse?.suggestedResponse || "",
     });
   };
 
@@ -473,6 +570,7 @@ export default function Dashboard() {
 
     try {
       const generatedResponse = suggestedResponse?.suggestedResponse || "";
+      const correctedResponse = correctedResponseDraft.trim() || generatedResponse;
       const response = await fetch('/api/classification-feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -480,6 +578,8 @@ export default function Dashboard() {
           status,
           messageOriginal: analysisSnapshot.messageOriginal,
           messageReformule: analysisSnapshot.messageReformule,
+          messageReformuleOriginal: analysisSnapshot.messageReformuleOriginal,
+          messageReformuleCorrige: analysisSnapshot.messageReformuleCorrige,
           originalClassification: {
             category: analysisSnapshot.category,
             subCategory: analysisSnapshot.subCategory,
@@ -495,11 +595,9 @@ export default function Dashboard() {
               category: correctionForm.category,
               subCategory: correctionForm.subCategory,
               type: correctionForm.type,
-            },
+          },
           generatedResponse,
-          correctedResponse: status === "correct"
-            ? generatedResponse
-            : correctionForm.response,
+          correctedResponse,
         }),
       });
 
@@ -605,12 +703,29 @@ export default function Dashboard() {
                 <textarea
                   value={inputText}
                   onChange={(e) => {
-                    setInputText(e.target.value);
+                    const reformulation = getReformulationForCurrentInput();
+                    const nextText = e.target.value;
+
+                    setInputText(nextText);
                     setResults(null);
                     setAnalysisSnapshot(null);
                     setSuggestedResponse(null);
                     setSuggestionCopied(false);
-                    setOriginalBeforeReformulation("");
+                    setPendingReformulationSource("");
+                    if (reformulation && nextText.trim()) {
+                      setOriginalBeforeReformulation(reformulation.original);
+                      setGeneratedReformulatedText(reformulation.generatedReformulated);
+                      setReformulatedText(nextText.trim());
+                      saveReformulationCache({
+                        original: reformulation.original,
+                        generatedReformulated: reformulation.generatedReformulated,
+                        reformulated: nextText.trim(),
+                      });
+                    } else {
+                      setOriginalBeforeReformulation("");
+                      setGeneratedReformulatedText("");
+                      clearReformulationCache();
+                    }
                     resetFeedbackState();
                   }}
                   placeholder="Décrivez votre requête ou le contenu du document ici..."
@@ -924,6 +1039,21 @@ export default function Dashboard() {
                   </div>
                 )}
 
+                {suggestedResponse && (
+                  <label className="block space-y-2">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Reponse a enregistrer</span>
+                    <textarea
+                      value={correctedResponseDraft}
+                      onChange={(e) => {
+                        setCorrectedResponseDraft(e.target.value);
+                        setFeedbackNotice("");
+                        setSavedFeedbackStatus(null);
+                      }}
+                      className="w-full min-h-[110px] rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm leading-6 text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20 resize-none"
+                    />
+                  </label>
+                )}
+
                 {feedbackMode === "misclassified" && (
                   <div className="border-t border-gray-50 pt-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -952,15 +1082,6 @@ export default function Dashboard() {
                         />
                       </label>
                     </div>
-
-                    <label className="block space-y-2">
-                      <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Reponse corrigee</span>
-                      <textarea
-                        value={correctionForm.response}
-                        onChange={(e) => setCorrectionForm((prev) => ({ ...prev, response: e.target.value }))}
-                        className="w-full min-h-[110px] rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm leading-6 text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20 resize-none"
-                      />
-                    </label>
 
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
                       <button
@@ -1038,7 +1159,10 @@ export default function Dashboard() {
                 </div>
               </div>
               <button
-                onClick={() => setShowReformulateModal(false)}
+                onClick={() => {
+                  setPendingReformulationSource("");
+                  setShowReformulateModal(false);
+                }}
                 className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-all"
               >
                 <X size={20} />
@@ -1049,7 +1173,7 @@ export default function Dashboard() {
               <div className="space-y-2">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Texte Original</p>
                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm italic text-gray-500 min-h-[150px] max-h-[250px] overflow-y-auto">
-                  {inputText}
+                  {pendingReformulationSource || inputText}
                 </div>
               </div>
               <div className="space-y-2">
@@ -1065,18 +1189,34 @@ export default function Dashboard() {
 
             <div className="p-4 sm:p-6 bg-gray-50/50 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 sm:gap-4 border-t border-gray-50">
               <button
-                onClick={() => setShowReformulateModal(false)}
+                onClick={() => {
+                  setPendingReformulationSource("");
+                  setShowReformulateModal(false);
+                }}
                 className="px-6 py-2.5 rounded-lg font-bold text-gray-500 hover:bg-gray-100 transition-all text-sm text-center"
               >
                 Annuler
               </button>
               <button
                 onClick={() => {
-                  setInputText(reformulatedText);
+                  const originalMessage = pendingReformulationSource.trim() || inputText.trim();
+                  const confirmedReformulatedText = reformulatedText.trim();
+                  const generatedReformulatedMessage =
+                    generatedReformulatedText.trim() || confirmedReformulatedText;
+
+                  setInputText(confirmedReformulatedText);
+                  setOriginalBeforeReformulation(originalMessage);
+                  setGeneratedReformulatedText(generatedReformulatedMessage);
+                  saveReformulationCache({
+                    original: originalMessage,
+                    generatedReformulated: generatedReformulatedMessage,
+                    reformulated: confirmedReformulatedText,
+                  });
                   setResults(null);
                   setAnalysisSnapshot(null);
                   setSuggestedResponse(null);
                   setSuggestionCopied(false);
+                  setPendingReformulationSource("");
                   resetFeedbackState();
                   setShowReformulateModal(false);
                 }}

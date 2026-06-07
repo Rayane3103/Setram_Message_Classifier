@@ -6,6 +6,8 @@ export type ClassificationFeedbackInput = {
   status: ClassificationFeedbackStatus;
   messageOriginal: string;
   messageReformule: string;
+  messageReformuleOriginal: string;
+  messageReformuleCorrige: string;
   catOriginal: string;
   sousCatOriginal: string;
   typeOriginal: string;
@@ -32,23 +34,35 @@ const ensureFeedbackTable = async () => {
   if (!tableReadyPromise) {
     const sql = getSql();
 
-    tableReadyPromise = sql`
-      CREATE TABLE IF NOT EXISTS classification_feedback (
-        id BIGSERIAL PRIMARY KEY,
-        status TEXT NOT NULL CHECK (status IN ('correct', 'misclassified')),
-        message_original TEXT NOT NULL,
-        "message_reformulé" TEXT NOT NULL DEFAULT '',
-        cat_original TEXT NOT NULL DEFAULT '',
-        sous_cat_original TEXT NOT NULL DEFAULT '',
-        type_original TEXT NOT NULL DEFAULT '',
-        "cat_corrigé" TEXT NOT NULL DEFAULT '',
-        "sous_cat_corrigé" TEXT NOT NULL DEFAULT '',
-        "type_corrigé" TEXT NOT NULL DEFAULT '',
-        "réponse_generé" TEXT NOT NULL DEFAULT '',
-        "réponse_corrigé" TEXT NOT NULL DEFAULT '',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `.then(() => undefined);
+    tableReadyPromise = (async () => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS classification_feedback (
+          id BIGSERIAL PRIMARY KEY,
+          status TEXT NOT NULL CHECK (status IN ('correct', 'misclassified')),
+          message_original TEXT NOT NULL,
+          "message_reformulé" TEXT NOT NULL DEFAULT '',
+          message_reformule_original TEXT NOT NULL DEFAULT '',
+          message_reformule_corrige TEXT NOT NULL DEFAULT '',
+          cat_original TEXT NOT NULL DEFAULT '',
+          sous_cat_original TEXT NOT NULL DEFAULT '',
+          type_original TEXT NOT NULL DEFAULT '',
+          "cat_corrigé" TEXT NOT NULL DEFAULT '',
+          "sous_cat_corrigé" TEXT NOT NULL DEFAULT '',
+          "type_corrigé" TEXT NOT NULL DEFAULT '',
+          "réponse_generé" TEXT NOT NULL DEFAULT '',
+          "réponse_corrigé" TEXT NOT NULL DEFAULT '',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`
+        ALTER TABLE classification_feedback
+        ADD COLUMN IF NOT EXISTS message_reformule_original TEXT NOT NULL DEFAULT ''
+      `;
+      await sql`
+        ALTER TABLE classification_feedback
+        ADD COLUMN IF NOT EXISTS message_reformule_corrige TEXT NOT NULL DEFAULT ''
+      `;
+    })();
   }
 
   return tableReadyPromise;
@@ -63,6 +77,8 @@ export const saveClassificationFeedback = async (input: ClassificationFeedbackIn
       status,
       message_original,
       "message_reformulé",
+      message_reformule_original,
+      message_reformule_corrige,
       cat_original,
       sous_cat_original,
       type_original,
@@ -76,6 +92,8 @@ export const saveClassificationFeedback = async (input: ClassificationFeedbackIn
       ${input.status},
       ${input.messageOriginal},
       ${input.messageReformule},
+      ${input.messageReformuleOriginal},
+      ${input.messageReformuleCorrige},
       ${input.catOriginal},
       ${input.sousCatOriginal},
       ${input.typeOriginal},
