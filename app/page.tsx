@@ -157,6 +157,85 @@ const emptyCorrectionForm: CorrectionFormState = {
   type: "",
 };
 
+const CATEGORY_OPTIONS = [
+  "Signalement",
+  "Demande d'information",
+  "Réclamation",
+  "Suggestion",
+  "Remerciement",
+  "Autres",
+];
+
+const SUB_CATEGORY_OPTIONS = [
+  "__NONE__",
+  "SAV",
+  "Objets perdus",
+  "Anomalies lignes rames ou stations",
+  "Vol",
+  "Anomalies externes",
+  "Erreur DAT",
+  "Qualité de service",
+  "Tarif",
+  "Modalité",
+  "Horaire",
+  "Comportement du personnel",
+  "Service voyageurs",
+  "Emplacement point de vente",
+  "Absence sécurité",
+  "organisation interne",
+  "Indisponibilité de la monnaies",
+  "Indisponibilité systèmes",
+  "Conditions tarifaires",
+  "Nuisances sonores",
+  "Espace vente fermé",
+  "Erreur verbalisation",
+  "Perturbation ligne",
+];
+
+const TYPE_OPTIONS = [
+  "Objet perdu",
+  "manque de monnaie",
+  "Demande d'information",
+  "Abonnement",
+  "Signalement",
+  "Offre de service",
+  "Sécurité",
+  "Hors scope",
+  "Confort",
+  "accueil et comportement agents",
+  "Annulée",
+  "Réclamation sécurité",
+  "Titre de transport",
+  "Objet trouvé/perdu",
+  "Objet trouvé",
+  "Réclamation contrôle",
+  "Mouvement",
+  "Accompagnement",
+  "IV",
+  "Doléance illisible",
+  "Remerciement",
+  "Réclamation exploitation",
+  "Réclamation maintenance",
+  "Suggestion",
+  "offre de formation",
+  "CV",
+  "Emploi/Stage/Formation",
+  "Réclamation commerciale",
+  "Réclamation station",
+  "Gamme tarifaire",
+];
+
+const optionOrEmpty = (value: string, options: string[]) =>
+  options.includes(value) ? value : "";
+
+const correctionDefaultsFromSnapshot = (
+  snapshot: FeedbackAnalysisSnapshot | null
+): CorrectionFormState => ({
+  category: optionOrEmpty(snapshot?.category || "", CATEGORY_OPTIONS),
+  subCategory: optionOrEmpty(snapshot?.subCategory || "__NONE__", SUB_CATEGORY_OPTIONS),
+  type: optionOrEmpty(snapshot?.type || "", TYPE_OPTIONS),
+});
+
 const normalizeSuggestedResponse = (data: Record<string, unknown>): SuggestedResponseResult => {
   const stats = asRecord(data.retrievalStats);
   const matches = Array.isArray(data.matches)
@@ -545,11 +624,7 @@ export default function Dashboard() {
     setFeedbackMode("misclassified");
     setFeedbackNotice("");
     setSavedFeedbackStatus(null);
-    setCorrectionForm({
-      category: "",
-      subCategory: "",
-      type: "",
-    });
+    setCorrectionForm(correctionDefaultsFromSnapshot(analysisSnapshot));
   };
 
   const handleSaveFeedback = async (status: FeedbackStatus) => {
@@ -1059,27 +1134,42 @@ export default function Dashboard() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <label className="space-y-2">
                         <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Categorie corrigee</span>
-                        <input
+                        <select
                           value={correctionForm.category}
                           onChange={(e) => setCorrectionForm((prev) => ({ ...prev, category: e.target.value }))}
                           className="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20"
-                        />
+                        >
+                          <option value="">Choisir une categorie</option>
+                          {CATEGORY_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
                       </label>
                       <label className="space-y-2">
                         <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sous-categorie corrigee</span>
-                        <input
+                        <select
                           value={correctionForm.subCategory}
                           onChange={(e) => setCorrectionForm((prev) => ({ ...prev, subCategory: e.target.value }))}
                           className="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20"
-                        />
+                        >
+                          <option value="">Choisir une sous-categorie</option>
+                          {SUB_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
                       </label>
                       <label className="space-y-2">
                         <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Type corrige</span>
-                        <input
+                        <select
                           value={correctionForm.type}
                           onChange={(e) => setCorrectionForm((prev) => ({ ...prev, type: e.target.value }))}
                           className="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20"
-                        />
+                        >
+                          <option value="">Choisir un type</option>
+                          {TYPE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
                       </label>
                     </div>
 
