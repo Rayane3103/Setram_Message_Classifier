@@ -11,6 +11,119 @@ const OUT_OF_CONTEXT_ERROR = "MESSAGE_OUT_OF_CONTEXT";
 const OUT_OF_CONTEXT_MESSAGE = "Message out of context.";
 const CONTEXT_SIMILARITY_THRESHOLD = 0.4;
 const CONTEXT_SEARCH_LIMIT = 3;
+const CONTEXT_STRONG_KEYWORDS = [
+  "tram",
+  "tramway",
+  "setram",
+  "transport",
+  "station",
+  "ligne",
+  "arret",
+  "quai",
+  "rame",
+  "ticket",
+  "billet",
+  "carte",
+  "abonnement",
+  "tarif",
+  "prix",
+  "validation",
+  "controle",
+  "controleur",
+  "agent",
+  "chauffeur",
+  "conducteur",
+  "retard",
+  "panne",
+  "incident",
+  "accident",
+  "securite",
+  "vol",
+  "perdu",
+  "perte",
+  "trouve",
+  "objet",
+  "reclamation",
+  "plainte",
+  "probleme",
+  "demande",
+  "information",
+  "renseignement",
+  "question",
+  "service",
+  "client",
+  "passager",
+  "voyageur",
+  "horaire",
+  "emploi",
+  "stage",
+  "formation",
+  "cv",
+  "sac",
+  "sachet",
+  "bagage",
+  "agressif",
+  "agressive",
+  "insulte",
+  "menace",
+  "comportement",
+];
+const CONTEXT_STOP_WORDS = new Set([
+  "bonjour",
+  "merci",
+  "salut",
+  "svp",
+  "stp",
+  "dans",
+  "avec",
+  "sans",
+  "pour",
+  "que",
+  "qui",
+  "quoi",
+  "comme",
+  "cela",
+  "cette",
+  "cette",
+  "etre",
+  "etre",
+  "avoir",
+  "faire",
+  "fait",
+  "meme",
+  "plus",
+  "moins",
+  "tres",
+  "vous",
+  "nous",
+  "leur",
+  "mes",
+  "ses",
+  "des",
+  "les",
+  "une",
+  "un",
+  "du",
+  "de",
+  "la",
+  "le",
+  "et",
+  "ou",
+  "au",
+  "aux",
+  "en",
+  "sur",
+  "pas",
+  "mon",
+  "ma",
+  "mes",
+  "ton",
+  "ta",
+  "tes",
+  "son",
+  "sa",
+  "ses",
+]);
 
 type ContextMatch = {
   id: string;
@@ -65,6 +178,58 @@ const parsePredictionPayload = (text: string) => {
 
 const formatScore = (score: number) => score.toFixed(2);
 
+const normalizeText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const tokenize = (value: string) =>
+  normalizeText(value).match(/[a-z0-9]+/g) ?? [];
+
+const extractMeaningfulTokens = (value: string) =>
+  tokenize(value).filter((token) => token.length > 3 && !CONTEXT_STOP_WORDS.has(token));
+
+const hasStrongContextKeyword = (value: string) => {
+  const normalized = normalizeText(value);
+  return CONTEXT_STRONG_KEYWORDS.some((keyword) => normalized.includes(keyword));
+};
+
+const buildMatchCorpus = (match: RankedClientResponseExample) =>
+  [
+    match.category,
+    match.subCategory,
+    match.type,
+    match.description,
+    match.response,
+  ].join(" ");
+
+const countTokenOverlap = (queryText: string, match: RankedClientResponseExample) => {
+  const queryTokens = new Set(extractMeaningfulTokens(queryText));
+  const matchTokens = new Set(extractMeaningfulTokens(buildMatchCorpus(match)));
+
+  let overlap = 0;
+  for (const token of queryTokens) {
+    if (matchTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap;
+};
+
+const hasContextSignal = (queryText: string, match?: RankedClientResponseExample) => {
+  if (hasStrongContextKeyword(queryText)) {
+    return true;
+  }
+
+  if (!match) {
+    return false;
+  }
+
+  return countTokenOverlap(queryText, match) >= 2;
+};
+
 const summarizeMatchClassification = (match: RankedClientResponseExample) =>
   [match.category, match.subCategory, match.type].filter(Boolean).join(" / ");
 
@@ -80,7 +245,8 @@ const toContextMatch = (match: RankedClientResponseExample): ContextMatch => ({
 const buildContextReason = (
   match: RankedClientResponseExample | undefined,
   similarity: number,
-  inContext: boolean
+  inContext: boolean,
+  hasSignal: boolean
 ) => {
   const threshold = formatScore(CONTEXT_SIMILARITY_THRESHOLD);
 
@@ -95,6 +261,10 @@ const buildContextReason = (
     return `Similarite Pinecone ${score}, au-dessus du seuil ${threshold}, avec un message historique SETRAM (${matchSummary}).`;
   }
 
+  if (!hasSignal) {
+    return `Similarite Pinecone ${score}, mais aucun signal metier SETRAM detecte dans le message.`;
+  }
+
   return `Similarite Pinecone maximale ${score}, inferieure au seuil ${threshold}. Le message est trop eloigne des messages historiques SETRAM.`;
 };
 
@@ -102,13 +272,14 @@ const checkMessageContext = async (text: string): Promise<ContextDecision> => {
   const retrieval = await searchClientResponseExamples(text, CONTEXT_SEARCH_LIMIT);
   const topMatch = retrieval.matches[0];
   const similarity = topMatch?.score ?? 0;
-  const inContext = similarity >= CONTEXT_SIMILARITY_THRESHOLD;
+  const hasSignal = hasContextSignal(text, topMatch);
+  const inContext = similarity >= CONTEXT_SIMILARITY_THRESHOLD && hasSignal;
 
   return {
     inContext,
     confidence: similarity,
     threshold: CONTEXT_SIMILARITY_THRESHOLD,
-    reason: buildContextReason(topMatch, similarity, inContext),
+    reason: buildContextReason(topMatch, similarity, inContext, hasSignal),
     ...(topMatch ? { match: toContextMatch(topMatch) } : {}),
   };
 };
