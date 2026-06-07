@@ -182,7 +182,7 @@ Réponds in_context=true si le message peut concerner, même indirectement:
 - tramway, transport, station, rame, ligne, arrêt, trajet;
 - client, passager, ticket, abonnement, carte, tarif, paiement;
 - agent, conducteur, contrôleur, sécurité, vol, agression, objet perdu/trouvé;
-- horaire, retard, panne, réclamation, signalement, suggestion, information, remerciement;
+- horaire, retard, panne, réclamation, signalement, suggestion, information,demande d'informations, question sur le tramway et la societé du tramway setram,  remerciement;
 - emploi, stage, formation, CV ou service lié à la société.
 
 Sois permissif:
