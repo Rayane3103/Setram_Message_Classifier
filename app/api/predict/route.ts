@@ -173,61 +173,22 @@ const parsePredictionPayload = (text: string) => {
 };
 
 const buildContextGuardPrompt = (text: string) => `
-Tu es un garde de contexte permissif pour un système de classification SETRAM.
+Tu es un garde de contexte permissif pour un système de classification des messages envoyés par des clients ou passagers d'une société de tramway.
 
-Objectif:
-Décider si le message peut raisonnablement appartenir à l'univers SETRAM, tramway, transport public urbain, service client, vente, information voyageurs, objets perdus, sécurité, exploitation, recrutement, formation ou relation usager.
+Ta tâche:
+Dire si le message peut être traité par le système SETRAM ou s'il est clairement hors contexte.
 
-Ce garde ne classe pas le message. Il décide seulement si le message doit être envoyé au classificateur SETRAM.
+Réponds in_context=true si le message peut concerner, même indirectement:
+- tramway, transport, station, rame, ligne, arrêt, trajet;
+- client, passager, ticket, abonnement, carte, tarif, paiement;
+- agent, conducteur, contrôleur, sécurité, vol, agression, objet perdu/trouvé;
+- horaire, retard, panne, réclamation, signalement, suggestion, information, remerciement;
+- emploi, stage, formation, CV ou service lié à la société.
 
-Principe:
-Évite les faux rejets. Si le message peut plausiblement correspondre à une catégorie ou sous-catégorie SETRAM, réponds in_context=true.
+Sois permissif:
+Si le message est ambigu mais pourrait venir d'un client/passager ou être traité par une société de tramway, réponds true.
 
-Accepte notamment:
-- réclamations, signalements, demandes d'information, suggestions, remerciements;
-- horaires, lignes, stations, rames, arrêts, perturbations, mouvement, exploitation;
-- tickets, titres de transport, cartes, abonnements, tarifs, paiement, DAT, verbalisation;
-- SAV, service voyageurs, modalités, conditions tarifaires;
-- objets perdus, objets trouvés, vol;
-- sécurité, absence de sécurité, anomalies, nuisances, confort, propreté;
-- comportement du personnel, agents, contrôleurs, conducteurs, accueil;
-- points de vente, espace vente fermé, manque de monnaie, systèmes indisponibles;
-- emploi, stage, formation, CV, offre de service, offre de formation;
-- messages courts, implicites, mal écrits, mixtes français/arabe/anglais.
-
-Accepte même si le message ne mentionne pas explicitement SETRAM, tramway ou transport, si le scénario est plausible dans ce domaine.
-
-Refuse seulement si le sujet principal est clairement hors du domaine SETRAM:
-- cuisine, sport, météo, politique, santé générale, finance, programmation, devoirs scolaires;
-- conversation personnelle sans lien plausible avec transport, service client, vente, emploi ou formation SETRAM;
-- phrase absurde où un mot SETRAM/transport est seulement collé sans relation réelle.
-
-Règle de doute:
-Si le message pourrait raisonnablement être classé dans au moins une catégorie, sous-catégorie ou type SETRAM, choisis in_context=true.
-Si tu hésites, préfère true.
-
-Exemples true:
-- "Quels sont les horaires ?"
-- "Je veux renouveler mon abonnement"
-- "Ma carte ne marche pas"
-- "J'ai perdu mon sac"
-- "J'ai trouvé un téléphone"
-- "Le contrôleur m'a mal parlé"
-- "Il n'y a pas de sécurité à la station"
-- "Merci pour votre aide"
-- "Où se trouve le point de vente ?"
-- "Je veux déposer mon CV"
-- "Avez-vous des offres de formation ?"
-- "Le distributeur ne rend pas la monnaie"
-- "La rame est trop sale"
-- "Il y a trop de bruit près de la ligne"
-
-Exemples false:
-- "donne-moi une recette de pizza"
-- "écris un code Python"
-- "quel est le président de la France ?"
-- "j'ai mal à la tête"
-- "le chien a mangé un hamburger avec le mot tramway"
+Réponds false seulement si le message est clairement sans lien avec une société de tramway ou ses services.
 
 Réponds uniquement avec un objet JSON valide:
 {
