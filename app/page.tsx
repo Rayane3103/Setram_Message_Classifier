@@ -90,6 +90,30 @@ type SuggestedResponseResult = {
   };
 };
 
+type FeedbackStatus = "correct" | "misclassified";
+
+type FeedbackAnalysisSnapshot = {
+  messageOriginal: string;
+  messageReformule: string;
+  category: string;
+  subCategory: string;
+  type: string;
+};
+
+type CorrectionFormState = {
+  category: string;
+  subCategory: string;
+  type: string;
+  response: string;
+};
+
+const emptyCorrectionForm: CorrectionFormState = {
+  category: "",
+  subCategory: "",
+  type: "",
+  response: "",
+};
+
 const normalizeSuggestedResponse = (data: Record<string, unknown>): SuggestedResponseResult => {
   const stats = asRecord(data.retrievalStats);
   const matches = Array.isArray(data.matches)
@@ -160,12 +184,24 @@ export default function Dashboard() {
   const [isSuggestingResponse, setIsSuggestingResponse] = useState(false);
   const [suggestedResponse, setSuggestedResponse] = useState<SuggestedResponseResult | null>(null);
   const [suggestionCopied, setSuggestionCopied] = useState(false);
+  const [originalBeforeReformulation, setOriginalBeforeReformulation] = useState("");
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<FeedbackAnalysisSnapshot | null>(null);
+  const [feedbackMode, setFeedbackMode] = useState<FeedbackStatus | null>(null);
+  const [correctionForm, setCorrectionForm] = useState<CorrectionFormState>(emptyCorrectionForm);
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState("");
+  const [savedFeedbackStatus, setSavedFeedbackStatus] = useState<FeedbackStatus | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAnalyse = async () => {
     if (!inputText.trim()) return;
 
     setIsAnalyzing(true);
+    setFeedbackMode(null);
+    setFeedbackNotice("");
+    setSavedFeedbackStatus(null);
+    setResults(null);
+    setAnalysisSnapshot(null);
     try {
       const response = await fetch('/api/predict', {
         method: 'POST',
@@ -191,7 +227,18 @@ export default function Dashboard() {
         throw new Error("La route /api/predict a retourne une reponse vide. Relancez l'application avec next dev ou next start.");
       }
 
-      setResults(normalizePredictionResponse(data));
+      const normalizedResult = normalizePredictionResponse(data);
+      const analyzedMessage = inputText.trim();
+      const sourceMessage = originalBeforeReformulation.trim();
+
+      setResults(normalizedResult);
+      setAnalysisSnapshot({
+        messageOriginal: sourceMessage || analyzedMessage,
+        messageReformule: sourceMessage ? analyzedMessage : "",
+        category: normalizedResult.category,
+        subCategory: normalizedResult.subCategory || "",
+        type: normalizedResult.type,
+      });
     } catch (error) {
       console.error("Analysis error:", error);
       alert(error instanceof Error && error.message
@@ -226,6 +273,12 @@ export default function Dashboard() {
         if (!transcript) return;
 
         setInputText((prev) => prev ? `${prev} ${transcript}` : transcript);
+        setResults(null);
+        setAnalysisSnapshot(null);
+        setSuggestedResponse(null);
+        setSuggestionCopied(false);
+        setOriginalBeforeReformulation("");
+        resetFeedbackState();
         setIsListening(false);
       };
 
@@ -269,6 +322,12 @@ export default function Dashboard() {
       text = text.replace(/^"|"$/g, '').trim();
 
       setInputText(text);
+      setResults(null);
+      setAnalysisSnapshot(null);
+      setSuggestedResponse(null);
+      setSuggestionCopied(false);
+      setOriginalBeforeReformulation("");
+      resetFeedbackState();
     } catch (error) {
       console.error("OCR (Gemini) Error:", error);
       alert("Erreur lors de l'extraction du texte. Veuillez vérifier votre clé API ou réessayer.");
@@ -281,6 +340,7 @@ export default function Dashboard() {
   const handleReformulate = async () => {
     if (!inputText.trim()) return;
 
+    const reformulationSource = inputText.trim();
     setIsReformulating(true);
     try {
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
@@ -308,6 +368,7 @@ export default function Dashboard() {
 
       const text = response.text().trim();
 
+      setOriginalBeforeReformulation(reformulationSource);
       setReformulatedText(text);
       setShowReformulateModal(true);
     } catch (error) {
@@ -372,6 +433,95 @@ export default function Dashboard() {
     } catch (error) {
       console.error("Copy suggested response error:", error);
       alert("Impossible de copier la réponse suggérée.");
+    }
+  };
+
+  const resetFeedbackState = () => {
+    setFeedbackMode(null);
+    setCorrectionForm(emptyCorrectionForm);
+    setFeedbackNotice("");
+    setSavedFeedbackStatus(null);
+  };
+
+  const handleOpenCorrectionForm = () => {
+    setFeedbackMode("misclassified");
+    setFeedbackNotice("");
+    setSavedFeedbackStatus(null);
+    setCorrectionForm({
+      category: "",
+      subCategory: "",
+      type: "",
+      response: suggestedResponse?.suggestedResponse || "",
+    });
+  };
+
+  const handleSaveFeedback = async (status: FeedbackStatus) => {
+    if (!results || !analysisSnapshot) return;
+
+    if (
+      status === "misclassified" &&
+      (!correctionForm.category.trim() ||
+        !correctionForm.subCategory.trim() ||
+        !correctionForm.type.trim())
+    ) {
+      setFeedbackNotice("Veuillez renseigner la categorie, la sous-categorie et le type corriges.");
+      return;
+    }
+
+    setIsSavingFeedback(true);
+    setFeedbackNotice("");
+
+    try {
+      const generatedResponse = suggestedResponse?.suggestedResponse || "";
+      const response = await fetch('/api/classification-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          messageOriginal: analysisSnapshot.messageOriginal,
+          messageReformule: analysisSnapshot.messageReformule,
+          originalClassification: {
+            category: analysisSnapshot.category,
+            subCategory: analysisSnapshot.subCategory,
+            type: analysisSnapshot.type,
+          },
+          correctedClassification: status === "correct"
+            ? {
+              category: analysisSnapshot.category,
+              subCategory: analysisSnapshot.subCategory,
+              type: analysisSnapshot.type,
+            }
+            : {
+              category: correctionForm.category,
+              subCategory: correctionForm.subCategory,
+              type: correctionForm.type,
+            },
+          generatedResponse,
+          correctedResponse: status === "correct"
+            ? generatedResponse
+            : correctionForm.response,
+        }),
+      });
+
+      const rawText = await response.text();
+      const data = parseJsonObject(rawText);
+
+      if (!response.ok) {
+        throw new Error(readResponseString(data?.error, `API responded with ${response.status}: ${rawText}`));
+      }
+
+      setSavedFeedbackStatus(status);
+      setFeedbackMode(null);
+      setFeedbackNotice(status === "correct"
+        ? "Classification correcte enregistree."
+        : "Correction enregistree.");
+    } catch (error) {
+      console.error("Feedback save error:", error);
+      setFeedbackNotice(error instanceof Error && error.message
+        ? error.message
+        : "Une erreur est survenue lors de l'enregistrement.");
+    } finally {
+      setIsSavingFeedback(false);
     }
   };
 
@@ -456,8 +606,12 @@ export default function Dashboard() {
                   value={inputText}
                   onChange={(e) => {
                     setInputText(e.target.value);
+                    setResults(null);
+                    setAnalysisSnapshot(null);
                     setSuggestedResponse(null);
                     setSuggestionCopied(false);
+                    setOriginalBeforeReformulation("");
+                    resetFeedbackState();
                   }}
                   placeholder="Décrivez votre requête ou le contenu du document ici..."
                   className="w-full min-h-[120px] sm:min-h-[160px] p-3 sm:p-4 bg-gray-50 border border-gray-100 rounded-lg focus:ring-2 focus:ring-brand-cyan focus:border-transparent outline-none transition-all resize-none text-sm sm:text-base text-gray-700"
@@ -724,6 +878,120 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+
+            {results && analysisSnapshot && (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 sm:p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Check size={20} className="text-brand-cyan" />
+                    <h3 className="font-bold text-brand-navy text-lg">Validation agent</h3>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <button
+                      onClick={() => handleSaveFeedback("correct")}
+                      disabled={isSavingFeedback}
+                      className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 border ${
+                        savedFeedbackStatus === "correct"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                          : "bg-white text-brand-navy border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+                      }`}
+                    >
+                      <Check size={16} />
+                      Correcte
+                    </button>
+                    <button
+                      onClick={handleOpenCorrectionForm}
+                      disabled={isSavingFeedback}
+                      className={`px-4 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 border ${
+                        feedbackMode === "misclassified"
+                          ? "bg-amber-50 text-amber-700 border-amber-100"
+                          : "bg-white text-brand-navy border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+                      }`}
+                    >
+                      <AlertCircle size={16} />
+                      Mal classee
+                    </button>
+                  </div>
+                </div>
+
+                {feedbackNotice && (
+                  <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
+                    savedFeedbackStatus
+                      ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                      : "border-amber-100 bg-amber-50 text-amber-700"
+                  }`}>
+                    {feedbackNotice}
+                  </div>
+                )}
+
+                {feedbackMode === "misclassified" && (
+                  <div className="border-t border-gray-50 pt-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <label className="space-y-2">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Categorie corrigee</span>
+                        <input
+                          value={correctionForm.category}
+                          onChange={(e) => setCorrectionForm((prev) => ({ ...prev, category: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20"
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sous-categorie corrigee</span>
+                        <input
+                          value={correctionForm.subCategory}
+                          onChange={(e) => setCorrectionForm((prev) => ({ ...prev, subCategory: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20"
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Type corrige</span>
+                        <input
+                          value={correctionForm.type}
+                          onChange={(e) => setCorrectionForm((prev) => ({ ...prev, type: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20"
+                        />
+                      </label>
+                    </div>
+
+                    <label className="block space-y-2">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Reponse corrigee</span>
+                      <textarea
+                        value={correctionForm.response}
+                        onChange={(e) => setCorrectionForm((prev) => ({ ...prev, response: e.target.value }))}
+                        className="w-full min-h-[110px] rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm leading-6 text-brand-navy outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20 resize-none"
+                      />
+                    </label>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setFeedbackMode(null);
+                          setCorrectionForm(emptyCorrectionForm);
+                          setFeedbackNotice("");
+                        }}
+                        disabled={isSavingFeedback}
+                        className="px-4 py-2.5 rounded-lg font-bold text-sm border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        <X size={16} />
+                        Annuler
+                      </button>
+                      <button
+                        onClick={() => handleSaveFeedback("misclassified")}
+                        disabled={isSavingFeedback}
+                        className="px-4 py-2.5 rounded-lg font-bold text-sm bg-brand-navy text-white hover:bg-navy-900 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        {isSavingFeedback ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Check size={16} />
+                        )}
+                        Enregistrer
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         </div>
       </main>
@@ -805,6 +1073,11 @@ export default function Dashboard() {
               <button
                 onClick={() => {
                   setInputText(reformulatedText);
+                  setResults(null);
+                  setAnalysisSnapshot(null);
+                  setSuggestedResponse(null);
+                  setSuggestionCopied(false);
+                  resetFeedbackState();
                   setShowReformulateModal(false);
                 }}
                 className="bg-brand-navy hover:bg-navy-900 text-white px-8 py-2.5 rounded-lg font-bold shadow-md hover:shadow-lg active:scale-95 transition-all text-sm flex items-center justify-center gap-2"
