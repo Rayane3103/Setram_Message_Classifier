@@ -1,13 +1,11 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import {
   searchClientResponseExamples,
   type RankedClientResponseExample,
 } from "@/lib/client-response-rag";
+import { generateGeminiText, readGeminiApiKey } from "@/lib/gemini";
 
 export const runtime = "nodejs";
-
-const GEMINI_FLASH_MODEL = "gemini-3.5-flash";
 
 type SuggestionRequest = {
   text?: unknown;
@@ -374,53 +372,55 @@ const generateSuggestedResponse = async (
   body: SuggestionRequest,
   matches: RankedClientResponseExample[]
 ) => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  const apiKey = readGeminiApiKey();
 
   if (!apiKey) {
-    throw new Error("Clé API Gemini non configurée");
+    throw new Error("Cle API Gemini non configuree");
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
   const generationConfig = {
     temperature: 0.4,
     maxOutputTokens: 768,
     thinkingConfig: { thinkingBudget: 0 },
   };
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_FLASH_MODEL,
-    generationConfig,
-  });
   const prompt = buildGeminiPrompt(body, matches);
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const firstResponse = ensureClientMessageEnvelope(response.text());
+  const result = await generateGeminiText({
+    apiKey,
+    generationConfig,
+    prompt,
+  });
+  const firstResponse = ensureClientMessageEnvelope(result.text);
 
   if (isUsableGeneratedResponse(firstResponse)) {
     return firstResponse;
   }
 
-  const retryResult = await model.generateContent(`
+  const retryResult = await generateGeminiText({
+    apiKey,
+    generationConfig,
+    prompt: `
 ${prompt}
 
-La réponse précédente était incomplète ou inutilisable:
+La reponse precedente etait incomplete ou inutilisable:
 ${JSON.stringify(firstResponse)}
 
-Elle était trop courte, incomplète, ou ressemblait à un statut interne au lieu d'un message client.
-Réécris maintenant une réponse directement envoyable au client avec 3 phrases complètes dans le corps, puis la signature obligatoire.
-`);
-  const retryResponse = await retryResult.response;
-  const secondResponse = ensureClientMessageEnvelope(retryResponse.text());
+Elle etait trop courte, incomplete, ou ressemblait a un statut interne au lieu d'un message client.
+Reecris maintenant une reponse directement envoyable au client avec 3 phrases completes dans le corps, puis la signature obligatoire.
+`,
+  });
+  const secondResponse = ensureClientMessageEnvelope(retryResult.text);
 
   if (isUsableGeneratedResponse(secondResponse)) {
     return secondResponse;
   }
 
-  const repairResult = await model.generateContent(
-    buildGeminiRepairPrompt(body, matches, secondResponse)
-  );
-  const repairResponse = await repairResult.response;
+  const repairResult = await generateGeminiText({
+    apiKey,
+    generationConfig,
+    prompt: buildGeminiRepairPrompt(body, matches, secondResponse),
+  });
 
-  return ensureClientMessageEnvelope(repairResponse.text());
+  return ensureClientMessageEnvelope(repairResult.text);
 };
 
 const toClientMatch = (example: RankedClientResponseExample) => ({

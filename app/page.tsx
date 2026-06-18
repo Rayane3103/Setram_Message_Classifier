@@ -567,30 +567,23 @@ export default function Dashboard() {
     const reformulationSource = getOriginalMessageForCurrentInput() || inputText.trim();
     setIsReformulating(true);
     try {
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (!apiKey) throw new Error("Clé API Gemini non configurée");
+      const response = await fetch('/api/reformulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: reformulationSource }),
+      });
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const prompt = `
-        Tu es un assistant de service client pour la SETRAM (Société d'Exploitation des Tramways). 
-        Ta tâche est de reformuler le message suivant d'un client de manière concise.
-        
-        RÈGLES DE REFORMULATION :
-        1. Commence obligatoirement par "Le client a dit...", "Le client a déclaré..." ou "Le client a réclamé..." selon le contexte du message.
-        2. Utilise un français simple, clair et compréhensible.
-        3. Donne uniquement le nécessaire, sans exagérer ni ajouter d'informations non présentes dans le message original.
-        4. Garde un ton professionnel et neutre en restant strictement fidèle aux faits.
-        5. Ne réponds pas au client, décris simplement et brièvement ce qu'il rapporte.
+      const rawText = await response.text();
+      const data = parseJsonObject(rawText);
 
-        MESSAGE DU CLIENT :
-        "${inputText}"
-      `;
+      if (!response.ok) {
+        throw new Error(readResponseString(data?.error, `API responded with ${response.status}: ${rawText}`));
+      }
 
-      const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-
-      const text = response.text().trim();
+      const text = readResponseString(data?.reformulatedText, "");
+      if (!text) {
+        throw new Error("La route /api/reformulate a retourne une reponse vide.");
+      }
 
       setPendingReformulationSource(reformulationSource);
       setGeneratedReformulatedText(text);
@@ -598,7 +591,8 @@ export default function Dashboard() {
       setShowReformulateModal(true);
     } catch (error) {
       console.error("Reformulation error:", error);
-      alert("Une erreur est survenue lors de la reformulation. Vos limites Gemini sont peut-être épuisées.");
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      alert(`Une erreur est survenue lors de la reformulation: ${message}`);
     } finally {
       setIsReformulating(false);
     }
